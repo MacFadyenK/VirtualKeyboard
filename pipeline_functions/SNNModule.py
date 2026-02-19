@@ -31,25 +31,23 @@ class fcSNN(nn.Module):
         self.fc2 = nn.Linear(hidden_layer, num_outputs)
         self.lif2 = snn.Leaky(beta=beta)
     
-    def forward(self, flattened_x, batch_first=False):
+    def forward(self, x, batch_first=False):
         """
         does a forward pass of the model on data x
         
         Inputs:
-        - flattened_x: data to be passed into model for a forward pass with the feature dimensions flattened.
-                       In the form of (time steps x batch x flattened feature dimension) or
-                       (batch x time steps x flattened feature dimension)
+        - x: data to be passed into model for a forward pass. In the form of (time steps x batch x feature dimension) or
+                       (batch x time steps x feature dimension)
         - batch_first: Is True if batch is the first dimension. If not specified, assumes batch_first is False
 
         Returns: 
         - tensor containing the raw output spike data of shape (time x batch x num_outputs)
         - tensor containing the membrane potential of the output neurons of shape (time x batch x num_outputs)
         """
-        x = flattened_x
-
         # transposes x to the form of (time x batch x flattened feature dimension) if not already in that form
         if(batch_first):
             x = x.transpose(0, 1)
+        x = torch.flatten(x, start_dim=2)
 
         #initializing hidden states of lif neurons
         mem1 = self.lif1.init_leaky()

@@ -4,20 +4,22 @@ from snntorch import functional as SF
 import torch
 import torch.nn as nn
 
-def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, update_every=5):
+def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, update_every=5, batch_first=False):
     """
     trains an SNN model for the specified number of epochs
     
     Inputs:
     - model: the SNN model to be trained
     - num_epochs: number of epochs to train for
-    - train_loader: pytorch dataloader for the training dataset
+    - train_loader: pytorch dataloader for the training dataset. Data is the form of (time steps x batch x feature dimension) or
+                    (batch x time steps x feature dimension)
     - val_loader: pytorch dataloader for the validation dataset
     - criterion: the loss function to be used to calculate loss
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
     - update_every: Positive integer. Prints training loss, training accuracy, validation loss, and validation accuracy for epochs
                     divisible by update_every. If no number given, prints every 5 epochs
+    - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
     - training_history: a dictionary with 4 key-value pairs , 
@@ -30,7 +32,7 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
     # loop through all epochs
     for e in range(num_epochs):
         # train model for one epoch and append the loss to the loss history
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, batch_first=batch_first)
         training_history["train_loss"].append(train_loss)
         training_history["train_acc"].append(train_acc)
 
@@ -43,7 +45,7 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
     return training_history
         
 
-def train_epoch(model, train_loader, criterion, optimizer, device):
+def train_epoch(model, train_loader, criterion, optimizer, device, batch_first = False):
     """
     trains a SNN model for one epoch
     
@@ -53,6 +55,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
     - criterion: the loss function to be used to calculate loss
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
+    - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
     - avg_loss: total loss across the entire epoch divided by the number of samples in the train_loader
@@ -69,10 +72,12 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
 
         # forward pass
         model.train()
-        spk_rec, _ = model(x)
+        spk_rec, _ = model(x, batch_first=batch_first)
 
         # loss calculation
-        loss = criterion(spk_rec, y)
+        loss = torch.zeros((1), device=device)
+        for step in range(spk_rec.size(0)):
+            loss += criterion(spk_rec[step], y)
 
         # calculating gradients and weights
         optimizer.zero_grad()
