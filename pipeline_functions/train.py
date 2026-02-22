@@ -14,7 +14,8 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
     - train_loader: pytorch dataloader for the training dataset. Data is the form of (time steps x batch x feature dimension) or
                     (batch x time steps x feature dimension)
     - val_loader: pytorch dataloader for the validation dataset
-    - criterion: the loss function to be used to calculate loss
+    - criterion: the loss function to be used to calculate loss Must be from snnTorch and use output
+                 spikes, not membrane voltage
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
     - update_every: Positive integer. Prints training loss, training accuracy, validation loss, and validation accuracy for epochs
@@ -52,7 +53,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
     Inputs:
     - model: the SNN model to be trained
     - train_loader: pytorch dataloader for the training dataset
-    - criterion: the loss function to be used to calculate loss
+    - criterion: the loss function to be used to calculate loss. Must be from snnTorch and use output
+                 spikes, not membrane voltage
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
@@ -75,9 +77,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
         spk_rec, _ = model(x, batch_first=batch_first)
 
         # loss calculation
-        loss = torch.zeros((1), device=device)
-        for step in range(spk_rec.size(0)):
-            loss += criterion(spk_rec[step], y)
+        loss = criterion(spk_rec, y)
 
         # calculating gradients and weights
         optimizer.zero_grad()
@@ -85,7 +85,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
         optimizer.step()
 
         # adding batch loss to total loss
-        total_loss += loss.item()
+        total_loss += loss.item() * spk_rec.size(1)
 
         # adding batch correct to total correct (assuming rate encoding)
         num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
