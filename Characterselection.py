@@ -1,6 +1,5 @@
 import numpy as np  # imported for matrix math
 
-
 #Simulated P300 likelihood function
 def simulated_p300_likelihood(flash_index, target_letter, letters, matrix):
     #flash index: which row of the matrix is currently flashing
@@ -19,7 +18,6 @@ def simulated_p300_likelihood(flash_index, target_letter, letters, matrix):
     else:
         return np.random.uniform(0.0, 0.2)  # weak/no response
 
-
 #P300 speller cycle character selection function
 def p300_speller_cycle(target_letter, repetition=10):
     # Repetitions is number of flash cycles. Can be changed to increase accuracy (10–15 recommended)
@@ -32,17 +30,15 @@ def p300_speller_cycle(target_letter, repetition=10):
     probabilities = np.ones(n) / n
     # uniform probabilities for each letter at the start (1/8 for each).
 
-    # flash matrix (8 flashes × 8 letters). Each row is one flash. Each column is one letter.
+    # flash matrix (2 x 4 matrix) 
     matrix = np.array([
-        [0, 1, 0, 1, 0, 1, 0, 1],
-        [1, 0, 1, 0, 1, 0, 1, 0],
-        [0, 0, 1, 1, 0, 0, 1, 1],
-        [1, 1, 0, 0, 1, 1, 0, 0],
-        [0, 1, 1, 0, 0, 1, 1, 0],
-        [1, 0, 0, 1, 1, 0, 0, 1],
-        [0, 1, 0, 1, 1, 0, 1, 0],
-        [1, 0, 1, 0, 0, 1, 0, 1]
-    ])
+    [1,1,1,1,0,0,0,0],  # Row 1
+    [0,0,0,0,1,1,1,1],  # Row 2
+    [1,0,0,0,1,0,0,0],  # Col 1
+    [0,1,0,0,0,1,0,0],  # Col 2
+    [0,0,1,0,0,0,1,0],  # Col 3
+    [0,0,0,1,0,0,0,1],  # Col 4
+])
 
     # flash cycles
     for _ in range(repetition): #repeat the flashing process for the specified number of repetitions.
