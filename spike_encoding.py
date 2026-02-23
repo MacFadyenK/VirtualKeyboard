@@ -1,6 +1,6 @@
 import numpy as np
 
-def deterministic_rate(features,T_ms=200,dt_ms=1,r_min=0.0,r_max=100.0):
+def deterministic_rate(features,T_ms=200,dt_ms=1,r_min=50.0,r_max=150.0):
     # features: array values between 0-1
     # T_ms: total time (ms) (adjustable)
     # dt_ms: time step (ms)
