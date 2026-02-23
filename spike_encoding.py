@@ -30,7 +30,7 @@ def deterministic_rate(features,T_ms=200,dt_ms=1,r_min=0.0,r_max=100.0):
     for t in range(steps):
         # Loop over time
 
-        phaserate +- r_Hz*dt_s
+        phaserate += r_Hz*dt_s
         # Increase based on firing rate
 
         fired=phaserate>=1.0
