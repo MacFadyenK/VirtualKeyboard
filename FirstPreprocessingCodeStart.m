@@ -37,7 +37,7 @@ firstargetstimulus = target_indices(1);
 % Extract 600 ms window after stimulus
 one_trial = raw_data(:, firstargetstimulus : firstargetstimulus + epoch_length - 1);
 
-channel = 15;   % example electrode, we can choose many but a paper mentions Pz/15 is strongest
+pz_index = 13;   % example electrode, we can choose many but a paper mentions Pz/13 is strongest
 
 time = (0:epoch_length-1) / samplingrate * 1000;  % convert to milliseconds
 
@@ -66,15 +66,6 @@ end
 average_target = mean(target_epochs,3);
 average_nontarget = mean(nontarget_epochs,3);
 
-% Find Pz channel (best for P300)
-pz_index = 0;
-for i = 1:length(t2.chanlocs)
-    if strcmp(t2.chanlocs(i).labels,'Pz')
-        pz_index = i;
-    end
-end
-
-
 
 time = (0:epoch_length-1)/samplingrate*1000;
 
@@ -88,5 +79,6 @@ plot(time, one_trial_filtered(pz_index,:), 'r');
 
 legend('Raw','Filtered');
 title('Single Trial: Raw vs Bandpass Filtered');
+
 
 
