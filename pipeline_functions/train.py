@@ -32,16 +32,20 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
     training_history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     # loop through all epochs
     for e in range(num_epochs):
-        # train model for one epoch and append the loss to the loss history
+        # train model for one epoch and append the loss and accuracy to the history
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, batch_first=batch_first)
         training_history["train_loss"].append(train_loss)
         training_history["train_acc"].append(train_acc)
 
-        ## MARYS VALIDATION FUNCTION GOES HERE TO GET VALIDATION LOSS AND ACCURACY ##
+        # check loss and accuracy on validation set and add to the history
+        val_loss, val_acc = validate_snn(model, val_loader, criterion, device, batch_first=batch_first)
+        training_history["val_loss"].append(val_loss)
+        training_history["val_acc"].append(val_acc)
 
         # print training status update after the specified number of epochs pass
         if e % update_every == 0:
-            print(f"Epoch {e}: Training Loss: {train_loss}, Training Accuracy: {train_acc}, ") #ADD VALIDATION LOSS + ACC PRINTING HERE
+            print(f"Epoch {e}: Training Loss: {train_loss}, Training Accuracy: {train_acc}, " + 
+                  f"Validation Loss: {val_loss}, Validation Accuracy: {val_acc}")
     
     return training_history
         
@@ -68,12 +72,13 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
     num_correct = 0
     total = 0
     acc = -1
+
+    model.train()
     # loop through entire training set
     for x, y in train_loader:
         x, y = x.to(device), y.to(device)
 
         # forward pass
-        model.train()
         spk_rec, _ = model(x, batch_first=batch_first)
 
         # loss calculation
@@ -96,4 +101,37 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
     # calculating the average loss and accuracy across the training set
     avg_loss = total_loss/total
     acc = num_correct/total
+    return avg_loss, acc
+
+def validate_snn(model, val_loader, criterion, device, batch_first=False):
+    model.eval()
+    total_loss = 0.0
+    num_correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for x, y in val_loader:
+            x, y = x.to(device), y.to(device)
+
+            # Reset SNN state if model supports it
+            if hasattr(model, "reset"):
+                model.reset()
+
+            # forward pass
+            spk_rec, _ = model(x, batch_first=batch_first)
+
+            # Compute loss on spike trains
+            loss = criterion(spk_rec, y)
+
+            # adding batch loss to total loss
+            total_loss += loss.item() * spk_rec.size(1)
+
+            # adding batch correct to total correct (assuming rate encoding)
+            num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
+
+            # adding to total number in training set
+            total += spk_rec.size(1)
+
+    avg_loss = total_loss / total
+    acc = num_correct / total
     return avg_loss, acc
