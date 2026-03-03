@@ -32,27 +32,24 @@ def create_flash_matrix(tensor):
     return flash_matrix
 
 #P300 speller cycle character selection function
-def p300_speller_cycle(flash_score, repetition=15): # Repetitions is number of flash cycles. Can be changed to increase accuracy (10–15 recommended)
+def p300_speller_cycle(tensor, repetition=15): # Repetitions is number of flash cycles. Can be changed to increase accuracy (10–15 recommended)
 
-    flash_scores = np.array(flash_score) # Convert the input flash scores to a NumPy array for easier manipulation.
-
-    if flash_scores.shape != (repetition, 12):
-        raise ValueError(f"Input must be shape ({repetition}, 12)") #Gives an error if the input flash scores do not match the expected shape of (repetition, 12). This ensures that the function receives the correct format of data for processing.
+    flash_matrix = create_flash_matrix(tensor)
 
     # Sum across repetitions
-    total_col_scores = np.sum(flash_scores[:, :6], axis=0)
-    total_row_scores = np.sum(flash_scores[:, 6:], axis=0)
+    row_totals = np.sum(flash_matrix, axis=1) #Set to axis=1 to sum across rows, giving a total score for each row. This will help identify which row has the most hits.
+    col_totals = np.sum(flash_matrix, axis=0) #set to axis=0 to sum across columns, giving a total score for each column. This will help identify which column has the most hits.
 
     # Choose max row and column
-    col_idx = np.argmax(total_col_scores)
-    row_idx = np.argmax(total_row_scores)
+    row_idx = np.argmax(row_totals)
+    col_idx = np.argmax(col_totals)
 
     predicted_letter = letters[row_idx][col_idx] #Using the indices of the selected row and column to retrieve the corresponding letter from the letters matrix.
 
-    return predicted_letter, row_idx, col_idx, total_row_scores, total_col_scores
+    return predicted_letter, row_idx, col_idx, row_totals, col_totals
 
 #Printing the letter with the highest score in the row and column.
-predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(flash_scores)
+predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor, repetition=15) 
 
 print(f"Row scores: {row_scores}")
 print(f"Column scores: {col_scores}")
