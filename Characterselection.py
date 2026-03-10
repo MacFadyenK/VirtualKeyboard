@@ -1,5 +1,5 @@
 import numpy as np  # imported for matrix math
-#Inputs here list of probablities 1-12. Link to second input in code. Order matrix. Argmax of first fix then second. 
+import torch
 
 letters = [
         ["A","B","C","D","E","F"],
@@ -10,24 +10,26 @@ letters = [
         ["5","6","7","8","9","_"]] 
     #The 6 x 6 grid of all character options. To select for only 8 characters, it would be best to reduce the matrix size (ex: 3 x 3).
 
-def create_flash_matrix(tensor):
+def create_flash_matrix(tensor): #(time, sample, num_outputs)
 
     flash_matrix = np.zeros((6, 6)) #Initialize a 6x6 matrix of zeros to represent the flash pattern.
-
-    tensor = [] #3D array based on the input data from SNNval. A 15x2 for each row, col that is repeated.
     
-    #Adjusted verison without uses the nested for loops. Can go back if needed. 
-    hits_per_flash = tensor[:, :, :, 1].sum(axis=(1, 2)) #Extract the hit counts for each flash from the tensor for the second column P300.
+    tensor = tensor.permute(1, 0, 2) # changes to (sample, time, num_outputs)
 
-    for index, hits in enumerate(hits_per_flash): #Keeps track of the index of the flash (0-11) and the number of hits for that flash. The index corresponds to either a row or a column in the 6x6 grid.
-        if index < 6:  # column flashes
-            flash_matrix[:, index] += hits
+    tensor = tensor.cpu().numpy() # Convert the tensor to a NumPy array for easier manipulation. This assumes the tensor is on a GPU; if it's already on the CPU, this step can be skipped. 
+
+    #Adjusted verison without uses the nested for loops. Can go back if needed. 
+    hits_per_flash = tensor[:, :, 1].sum(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
+    for index in range(len(hits_per_flash)):
+    #for index, hits in enumerate(hits_per_flash): #Keeps track of the index of the flash (0-11) and the number of hits for that flash. The index corresponds to either a row or a column in the 6x6 grid.
+        if (index % 12) < 6:  # column flashes
+            flash_matrix[:, index] += hits_per_flash[index]
         else:          # row flashes
-            flash_matrix[index - 6, :] += hits
+            flash_matrix[index - 6, :] += hits_per_flash[index]
     return flash_matrix
 
 #P300 speller cycle character selection function
-def p300_speller_cycle(tensor, repetition=15): # Repetitions is number of flash cycles. Can be changed to increase accuracy (10–15 recommended)
+def p300_speller_cycle(tensor): 
 
     flash_matrix = create_flash_matrix(tensor)
 
@@ -43,8 +45,9 @@ def p300_speller_cycle(tensor, repetition=15): # Repetitions is number of flash 
 
     return predicted_letter, row_idx, col_idx, row_totals, col_totals
 
+tensor = []
 #Printing the letter with the highest score in the row and column.
-predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor, repetition=15) 
+predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor) 
 
 print(f"Row scores: {row_scores}")
 print(f"Column scores: {col_scores}")
