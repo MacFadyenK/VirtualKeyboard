@@ -1,5 +1,9 @@
 % Load the .mat file into MATLAB workspace
 data = load('C:\Users\MikeK\Downloads\s17.mat');
+load('C:\Users\MikeK\Downloads\s17.mat')
+
+% This below will help us use it when calling into python
+save('C:\Users\MikeK\Downloads\s17_v72.mat','-v7')
 t2 = data.train{1};
 
 
