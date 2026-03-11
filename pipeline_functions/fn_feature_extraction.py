@@ -4,48 +4,34 @@
 
 from scipy.io import loadmat
 import numpy as np 
-import eeglib # for feature extraction, install via pip if needed (pip install eeglib)
+
 
 def extractFeatures(dataset, save_filepath = None):
     """
     extracts features from an eeg dataset
 
     Inputs:
-    - dataset: can be either a preloaded dataset or a filepath to a saved .mat dataset
+    - dataset: can be either a preloaded dataset of features or a filepath to a saved .mat dataset
     - save_filepath: filepath for location save feature extracted dataset. If None, files are not saved
 
     Outputs:
     - X_norm: normalized time series data before feature extraction
     - features_array: feature extracted numpy dataset
-    - y: labels for each sample
     """
+    X = None
     # Load .mat file -- Michael is adding to GitHub, but adjust filename as needed
     # if dataset is in an outside file
     if(isinstance(dataset, str)):
         mat = loadmat(dataset)
+        X = mat['all_epochs']
     # if dataset is directly input
     else:
-        mat = dataset
-
-    # Extract datasets
-    target = mat["filtered_target_epochs"]
-    nontarget = mat["filtered_nontarget_epochs"]
-    times = mat["time"].squeeze()  # in seconds
-
-    print("Times min:", times.min())
-    print("Times max:", times.max())
-    print("Times shape:", times.shape) 
+        X = dataset
 
     # Fix MATLAB->Python dimensions: (trials, channels, time) -- MATLAB used (channels, time, trials)
-    target = np.transpose(target, (2, 0, 1))
-    nontarget = np.transpose(nontarget, (2, 0, 1))
-
-    # Combine trials
-    X = np.concatenate([target, nontarget], axis=0)
-    y = np.concatenate([np.ones(target.shape[0]), np.zeros(nontarget.shape[0])])
+    X = np.transpose(X, (2, 0, 1))
 
     print("X shape:", X.shape)
-    print("y shape:", y.shape)
 
     # Normalize each trial (0–1)
     eps = 1e-8
@@ -89,14 +75,13 @@ def extractFeatures(dataset, save_filepath = None):
     if save_filepath is not None:
         np.save(save_filepath + "X_norm.npy", X_norm)                 # (trials, channels, time)
         np.save(save_filepath + "X_features.npy", features_array)     # (trials, 160)
-        np.save(save_filepath + "y.npy", y)                           # (trials,) , labels: 1 for target, 0 for nontarget
-        print("Saved X_norm.npy, X_features.npy, and y.npy")
+        print("Saved X_norm.npy, X_features.npy")
 
     # (nTrials x nFeatures) reshape for SNN input
     tensor_reshaped = X_norm.reshape(X_norm.shape[0], -1)
     print("Reshaped tensor for SNN input:", tensor_reshaped.shape)
 
-    return X_norm, features_array, y
+    return X_norm, features_array
 
 # Notes:
 # - X_norm is the time-series EEG for spike encoding / SNN input
