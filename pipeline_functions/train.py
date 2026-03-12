@@ -39,7 +39,7 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
         training_history["train_acc"].append(train_acc)
 
         # check loss and accuracy on validation set and add to the history
-        val_loss, val_acc = validate_snn(model, val_loader, criterion, device, batch_first=batch_first)
+        val_loss, val_acc, avg_spk, max_mem, total_counts = validate_snn(model, val_loader, criterion, device, batch_first=batch_first)
         training_history["val_loss"].append(val_loss)
         training_history["val_acc"].append(val_acc)
 
@@ -47,6 +47,9 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
         if e % update_every == 0:
             print(f"Epoch {e+1}: Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc*100:.2f}%, " + 
                   f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc*100:.2f}%")
+            print(f"Avg output spike rate: {avg_spk:.4f}")
+            print(f"Avg output membrane max: {max_mem:.4f}")
+            print(f"Predictions for each class: {total_counts}")
     
     return training_history
         
@@ -120,6 +123,9 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
     Returns:
     - avg_loss: total loss across the validation set divided by the number of samples in the val_loader
     - acc: accuracy of the model on the data in val_loader
+    - avg_spike_rate: average rate of spiking of the output neurons for the validation set
+    - avg_membrane_max: cross batch average of the maximum membrane potential produced by the output LIF neurons
+    - total_counts: total number of predictions of the validation set for each class. [nonP300, P300]
     """
     model.eval()
     total_loss = 0.0
@@ -131,13 +137,16 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
     total_mem2_max = 0
     total_steps = 0
 
+    # to count classification of each class
+    total_counts = torch.zeros(2, dtype=torch.long)
+
     with torch.no_grad():
         for x, y in val_loader:
             x, y = x.to(device), y.to(device)
 
             # Reset SNN state if model supports it
-            if hasattr(model, "reset"):
-                model.reset()
+            # if hasattr(model, "reset"):
+            #     model.reset()
 
             # forward pass
             spk_rec, mem_rec = model(x, batch_first=batch_first)
@@ -157,17 +166,21 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
 
             # adding batch correct to total correct (assuming rate encoding)
             num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
+            
+            spike_counts = spk_rec.sum(dim=0)
+            pred = spike_counts.argmax(dim=1)
+            class_counts = torch.bincount(pred, minlength=2)
+            total_counts += class_counts
 
             # adding to total number in training set
             total += spk_rec.size(1)
 
-    # prints avg spike rate and maximum membrane potential to help with tuning thresholds
-    print(f"Avg output spike rate: {total_output_spikes/total_steps:.4f}")
-    print(f"Avg output membrane max: {total_mem2_max/total_steps:.4f}")
-    
+    avg_spk_rate = total_output_spikes/total_steps
+    avg_membrane_max = total_mem2_max/total_steps
+
     avg_loss = total_loss / total
     acc = num_correct / total
-    return avg_loss, acc
+    return avg_loss, acc, avg_spk_rate, avg_membrane_max, total_counts
 
 def prepare_training_data(X, y, batch_size, balanced = True):
     """
