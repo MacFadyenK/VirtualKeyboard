@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import butter, filtfilt
 from scipy.io import loadmat
 import h5py
+import mat73
 
 def preprocess_training(file_path, save_path=None):
     """
@@ -15,71 +16,83 @@ def preprocess_training(file_path, save_path=None):
     - all_epochs: numpy array containing the preprocessed EEG signal data in shape (channels, time, signal)
     - labels: labels corresponding to the class of each signal in all_epochs
     """
-    data = loadmat(file_path, squeeze_me=True, struct_as_record=False)
+    #data = loadmat(file_path, squeeze_me=True, struct_as_record=False)
+    data = mat73.loadmat(file_path)
 
-    t2 = data['train'][0]
+    labels=[]
+    all_epochs=[]
+    
+    for n_train in range(len(data['train'])):
+        t2 = data['train'][n_train]
 
-    # lets us see where target stimulus and where non target stim is
-    target_indices = np.where(t2.markers_target == 1)[0]
-    nontarget_indices = np.where(t2.markers_target == 2)[0]
+        # lets us see where target stimulus and where non target stim is
+        target_indices = np.where(t2["markers_target"] == 1)[0]
+        nontarget_indices = np.where(t2["markers_target"] == 2)[0]
 
-    # define parameters, sampling rate (512hz) and epoch length (600ms)
-    samplingrate = t2.srate
-    epoch_length = int(round(0.6 * samplingrate))
+        # define parameters, sampling rate (512hz) and epoch length (600ms)
+        samplingrate = t2['srate']
+        epoch_length = int(round(0.6 * samplingrate))
 
-    # Design bandpass filter (0.5–15 Hz)
-    b, a = butter(4, [0.5/(samplingrate/2), 15/(samplingrate/2)], btype='bandpass')
+        # Design bandpass filter (0.5–15 Hz)
+        b, a = butter(4, [0.5/(samplingrate/2), 15/(samplingrate/2)], btype='bandpass')
 
-    # Use raw EEG data
-    raw_data = t2.data
+        # Use raw EEG data
+        raw_data = t2['data']
 
-    # Pick first target stimulus
-    firstargetstimulus = target_indices[0]
+        # Pick first target stimulus
+        firstargetstimulus = target_indices[0]
 
-    pz_index = 12   # MATLAB 13 -> Python index 12
+        pz_index = 12   # MATLAB 13 -> Python index 12
 
-    time = np.arange(epoch_length) / samplingrate * 1000  # milliseconds
+        time = np.arange(epoch_length) / samplingrate * 1000  # milliseconds
 
-    # lets us create these arrays, channels, samples, and number of trials
-    target_epochs = np.zeros((32, epoch_length, len(target_indices)))
-    nontarget_epochs = np.zeros((32, epoch_length, len(nontarget_indices)))
+        # lets us create these arrays, channels, samples, and number of trials
+        target_epochs = np.zeros((32, epoch_length, len(target_indices)))
+        nontarget_epochs = np.zeros((32, epoch_length, len(nontarget_indices)))
 
-    # Extract all target trials
-    for i in range(len(target_indices)):
-        firstargetstimulus = target_indices[i]
-        target_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
+        # Extract all target trials
+        for i in range(len(target_indices)):
+            firstargetstimulus = target_indices[i]
+            target_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
 
-    # Extract all nontarget trials
-    for i in range(len(nontarget_indices)):
-        firstargetstimulus = nontarget_indices[i]
-        nontarget_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
+        # Extract all nontarget trials
+        for i in range(len(nontarget_indices)):
+            firstargetstimulus = nontarget_indices[i]
+            nontarget_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
 
-    filteredepochs = np.zeros_like(target_epochs)
-    filterednontargetepochs = np.zeros_like(nontarget_epochs)
+        filteredepochs = np.zeros_like(target_epochs)
+        filterednontargetepochs = np.zeros_like(nontarget_epochs)
 
-    # Filter target trials
-    for i in range(len(target_indices)):
-        filteredepochs[:, :, i] = filtfilt(b, a, target_epochs[:, :, i], axis=1)
+        # Filter target trials
+        for i in range(len(target_indices)):
+            filteredepochs[:, :, i] = filtfilt(b, a, target_epochs[:, :, i], axis=1)
 
-    # Filter nontarget trials
-    for i in range(len(nontarget_indices)):
-        filterednontargetepochs[:, :, i] = filtfilt(b, a, nontarget_epochs[:, :, i], axis=1)
+        # Filter nontarget trials
+        for i in range(len(nontarget_indices)):
+            filterednontargetepochs[:, :, i] = filtfilt(b, a, nontarget_epochs[:, :, i], axis=1)
 
-    # Average across trials
-    average_target = np.mean(filteredepochs, axis=2)
-    average_nontarget = np.mean(filterednontargetepochs, axis=2)
+        # Average across trials
+        average_target = np.mean(filteredepochs, axis=2)
+        average_nontarget = np.mean(filterednontargetepochs, axis=2)
 
-    time = np.arange(epoch_length) / samplingrate * 1000
+        time = np.arange(epoch_length) / samplingrate * 1000
 
-    # Compile dataset
-    numberof_target = filteredepochs.shape[2]
-    numberof_nontarget = filterednontargetepochs.shape[2]
-    print(numberof_target)
-    print(numberof_nontarget)
+        # Compile dataset
+        numberof_target = filteredepochs.shape[2]
+        numberof_nontarget = filterednontargetepochs.shape[2]
+        # print(numberof_target)
+        # print(numberof_nontarget)
 
-    labels = np.concatenate((np.ones(numberof_target, dtype=np.int64), np.zeros(numberof_nontarget, dtype=np.int64)))
+        if n_train == 0:
+            labels = np.concatenate((np.ones(numberof_target, dtype=np.int64), np.zeros(numberof_nontarget, dtype=np.int64)))
 
-    all_epochs = np.concatenate((filteredepochs, filterednontargetepochs), axis=2)
+            all_epochs = np.concatenate((filteredepochs, filterednontargetepochs), axis=2)
+        else:
+            labels = np.concatenate((labels, np.ones(numberof_target, dtype=np.int64), np.zeros(numberof_nontarget, dtype=np.int64)))
+
+            all_epochs = np.dstack((all_epochs, filteredepochs, filterednontargetepochs))
+    
+
 
     # Save dataset as NPZ (Python format)
     if save_path is not None:
