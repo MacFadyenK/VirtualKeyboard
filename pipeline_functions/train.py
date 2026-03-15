@@ -1,9 +1,11 @@
 import snntorch as snn
 from snntorch import functional as SF
 
+import numpy as np
+
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split, TensorDataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, random_split, Dataset, TensorDataset, WeightedRandomSampler
 
 def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, loss_style = 'spk', update_every=5, batch_first=False):
     """
@@ -218,8 +220,7 @@ def prepare_training_data(X, y, batch_size, balanced = True):
     - test_loader: pytorch dataloader for testing dataset
     """
     # change into pytorch tensors
-    X_tensor = torch.from_numpy(X)
-    X_tensor = X_tensor.clone().detach().float()
+    X_tensor = torch.from_numpy(X).float()
     y_tensor = torch.from_numpy(y)
 
     # load into a tensor dataset
@@ -241,7 +242,7 @@ def prepare_training_data(X, y, batch_size, balanced = True):
     train_dataset, val_dataset, test_dataset = random_split(full_dataset, lengths)
 
     # creating a sampler out P300 and non-P300 samples for training set so they are closer to 50/50
-    train_labels = torch.tensor([full_dataset[i][1] for i in train_dataset.indices])
+    train_labels = y_tensor[train_dataset.indices]
     class_counts = torch.bincount(train_labels)
     print("Training Class Counts: ", class_counts)
     # Calculate inverse frequencies
@@ -263,11 +264,89 @@ def prepare_training_data(X, y, batch_size, balanced = True):
             len(sample_weights), 
             replacement=True # Allows oversampling of minority classes
         )
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=2)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
     return train_loader, val_loader, test_loader, class_weights
+
+
+class EEGMemmapDataset(Dataset):
+    def __init__(self, X_path, y_path, X_shape):
+        """
+        Memory-efficient EEG dataset using numpy memmap.
+        
+        Inputs:
+        - X_path: path to memmap .dat file for EEG features (float32)
+        - y_path: path to memmap .dat file for labels (int64)
+        - X_shape: tuple, shape of X (num_samples, channels, timesteps)
+        """
+        self.X = np.memmap(X_path, dtype='int8', mode='r').reshape(X_shape)
+        self.y = np.memmap(y_path, dtype='int64', mode='r')
+
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self, idx):
+        # convert to float only for this batch
+        x = torch.from_numpy(self.X[idx]).float()  # 0/1 → float
+        y = torch.tensor(self.y[idx], dtype=torch.long)
+        return x, y
+
+
+def prepare_training_data_memmap(X_path, y_path, X_shape, batch_size, balanced=True,
+                                 train_ratio=0.7, val_ratio=0.15, test_ratio=0.15,
+                                 pin_memory=True, num_workers=2):
+    """
+    Prepares train/val/test DataLoaders using memory-mapped EEG arrays.
+    """
+    # Load dataset (memory-mapped)
+    full_dataset = EEGMemmapDataset(X_path, y_path, X_shape)
+    total_size = len(full_dataset)
+    
+    # Split indices
+    total_size = len(full_dataset)
+    train_size = int(train_ratio * total_size)
+    val_size = int(val_ratio * total_size)
+    test_size = total_size - train_size - val_size
+
+    lengths = [train_size, val_size, test_size]
+    print(f"Train size: {train_size}, Val size: {val_size}, Test size: {test_size}")
+
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, lengths)
+
+
+    train_labels = full_dataset.y[train_dataset.indices]  # memmap indexing, no copy
+    class_counts = np.bincount(train_labels)
+    print("Training Class Counts: ", class_counts)
+    class_weights = 1.0 / class_counts
+    class_weights = class_weights / class_weights.sum() * len(class_counts)
+    print("Training Class Weights:", class_weights)
+
+    if balanced:
+        sample_weights = class_weights[train_labels].astype(np.float32)
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  sampler=sampler, pin_memory=pin_memory,
+                                  num_workers=num_workers)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  shuffle=True, pin_memory=pin_memory,
+                                  num_workers=num_workers)
+
+    val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                            shuffle=False, pin_memory=pin_memory,
+                            num_workers=num_workers)
+
+    test_loader = DataLoader(test_dataset, batch_size=batch_size,
+                             shuffle=False, pin_memory=pin_memory,
+                             num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader, torch.from_numpy(class_weights)
