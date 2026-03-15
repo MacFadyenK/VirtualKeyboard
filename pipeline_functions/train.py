@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split, TensorDataset, WeightedRandomSampler
 
-def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, update_every=5, batch_first=False):
+def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, loss_style = 'spk', update_every=5, batch_first=False):
     """
     trains an SNN model for the specified number of epochs
     
@@ -19,6 +19,8 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
                  spikes, not membrane voltage
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
+    - loss_style: whether to compute loss based on spikes or on membrane potential: 
+            for spikes, enter 'spk', for membrane potential, enter 'mem'
     - update_every: Positive integer. Prints training loss, training accuracy, validation loss, and validation accuracy for epochs
                     divisible by update_every. If no number given, prints every 5 epochs
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
@@ -34,12 +36,12 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
     # loop through all epochs
     for e in range(num_epochs):
         # train model for one epoch and append the loss and accuracy to the history
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, batch_first=batch_first)
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, loss_style=loss_style, batch_first=batch_first)
         training_history["train_loss"].append(train_loss)
         training_history["train_acc"].append(train_acc)
 
         # check loss and accuracy on validation set and add to the history
-        val_loss, val_acc, avg_spk, max_mem, total_counts = validate_snn(model, val_loader, criterion, device, batch_first=batch_first)
+        val_loss, val_acc, avg_spk, max_mem, total_counts = validate_snn(model, val_loader, criterion, device, loss_style=loss_style, batch_first=batch_first)
         training_history["val_loss"].append(val_loss)
         training_history["val_acc"].append(val_acc)
 
@@ -54,7 +56,7 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
     return training_history
         
 
-def train_epoch(model, train_loader, criterion, optimizer, device, batch_first = False):
+def train_epoch(model, train_loader, criterion, optimizer, device,loss_style='spk', batch_first = False):
     """
     trains a SNN model for one epoch
     
@@ -65,6 +67,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
                  spikes, not membrane voltage
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
+    - loss_style: whether to compute loss based on spikes or on membrane potential: 
+                for spikes, enter 'spk', for membrane potential, enter 'mem'
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
@@ -86,8 +90,15 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
         spk_rec, mem_rec = model(x, batch_first=batch_first)
 
         # loss calculation
-        mem_mean = mem_rec.mean(dim=0)
-        loss = criterion(mem_mean, y)
+        # Compute loss on spike trains
+        if loss_style == 'mem':
+            mem_mean = mem_rec.mean(dim=0)
+            loss = criterion(mem_mean, y)
+        elif loss_style == 'spk':
+            spike_counts = spk_rec.sum(dim=0)
+            loss = criterion(spike_counts, y)
+        else:
+            raise ValueError("Invalid loss type input")
 
         # calculating gradients and weights
         optimizer.zero_grad()
@@ -108,7 +119,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
     acc = num_correct/total
     return avg_loss, acc
 
-def validate_snn(model, val_loader, criterion, device, batch_first=False):
+def validate_snn(model, val_loader, criterion, device, loss_style='spk', batch_first=False):
     """
     evaluates a SNN model on the entire validation set
     
@@ -118,6 +129,8 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
     - criterion: the loss function to be used to calculate loss. Must be from snnTorch and use output
                  spikes, not membrane voltage
     - device: the device which the model is in. e.g. cuda, cpu
+    - loss_style: whether to compute loss based on spikes or on membrane potential: 
+                  for spikes, enter 'spk', for membrane potential, enter 'mem'
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
@@ -138,7 +151,7 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
     total_steps = 0
 
     # to count classification of each class
-    total_counts = torch.zeros(2, dtype=torch.long)
+    total_counts = torch.zeros(2, dtype=torch.long, device=device)
 
     with torch.no_grad():
         for x, y in val_loader:
@@ -158,8 +171,14 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
             total_steps += 1
 
             # Compute loss on spike trains
-            mem_mean = mem_rec.mean(dim=0)
-            loss = criterion(mem_mean, y)
+            if loss_style == 'mem':
+                mem_mean = mem_rec.mean(dim=0)
+                loss = criterion(mem_mean, y)
+            elif loss_style == 'spk':
+                spike_counts = spk_rec.sum(dim=0)
+                loss = criterion(spike_counts, y)
+            else:
+                raise ValueError("Invalid loss type input")
 
             # adding batch loss to total loss
             total_loss += loss.item() * spk_rec.size(1)
