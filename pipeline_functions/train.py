@@ -48,7 +48,7 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
         training_history["val_acc"].append(val_acc)
 
         # print training status update after the specified number of epochs pass
-        if e % update_every == 0:
+        if (e+1) % update_every == 0:
             print(f"Epoch {e+1}: Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc*100:.2f}%, " + 
                   f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc*100:.2f}%")
             print(f"Avg output spike rate: {avg_spk:.4f}")
@@ -292,7 +292,7 @@ class EEGMemmapDataset(Dataset):
 
     def __getitem__(self, idx):
         # convert to float only for this batch
-        x = torch.from_numpy(self.X[idx]).float()  # 0/1 → float
+        x = torch.from_numpy(self.X[idx].copy()).float()  # 0/1 → float
         y = torch.tensor(self.y[idx], dtype=torch.long)
         return x, y
 
@@ -348,5 +348,7 @@ def prepare_training_data_memmap(X_path, y_path, X_shape, batch_size, balanced=T
     test_loader = DataLoader(test_dataset, batch_size=batch_size,
                              shuffle=False, pin_memory=pin_memory,
                              num_workers=num_workers)
+    
+    class_weights = torch.from_numpy(class_weights).float()
 
-    return train_loader, val_loader, test_loader, torch.from_numpy(class_weights)
+    return train_loader, val_loader, test_loader, class_weights
