@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split, Dataset, TensorDataset, WeightedRandomSampler
 
-def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, loss_style = 'spk', update_every=5, batch_first=False):
+def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, loss_style = 'spk', update_every=5, checkpoint_path=None, batch_first=False):
     """
     trains an SNN model for the specified number of epochs
     
@@ -25,6 +25,7 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
             for spikes, enter 'spk', for membrane potential, enter 'mem'
     - update_every: Positive integer. Prints training loss, training accuracy, validation loss, and validation accuracy for epochs
                     divisible by update_every. If no number given, prints every 5 epochs
+    - checkpoint_path: file path to the location which to save the training checkpoint
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
@@ -49,6 +50,8 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
 
         # print training status update after the specified number of epochs pass
         if (e+1) % update_every == 0:
+            if checkpoint_path is not None:
+                save_checkpoint(e, model=model, optimizer=optimizer, loss=train_loss, path=checkpoint_path)
             print(f"Epoch {e+1}: Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc*100:.2f}%, " + 
                   f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc*100:.2f}%")
             print(f"Avg output spike rate: {avg_spk:.4f}")
@@ -202,6 +205,16 @@ def validate_snn(model, val_loader, criterion, device, loss_style='spk', batch_f
     avg_loss = total_loss / total
     acc = num_correct / total
     return avg_loss, acc, avg_spk_rate, avg_membrane_max, total_counts
+
+def save_checkpoint(epoch, model, optimizer, loss, path):
+    """Saves the training state to a file."""
+    state = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+    }
+    torch.save(state, path)
 
 def prepare_training_data(X, y, batch_size, balanced = True):
     """
