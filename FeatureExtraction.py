@@ -1,11 +1,12 @@
 # Feature extraction from .mat file for BE4999 SNN project, I used this to run .mat file data with 
 # basic feature extraction (peak-to-peak, mean, Hjorth parameters) and save as .npy for SNN input. We can 
-# add time window and features as needed! - Madalyn  3-4-2026
+# add time window and features as needed! - Madalyn  3-16-2026
 
 from scipy.io import loadmat
 import numpy as np 
+#import eeglib # for feature extraction, install via pip if needed (pip install eeglib)
 
-# Load .mat file 
+# Load .mat file -- adjust filename as needed
 mat = loadmat("S17_Preprocessed_Epoch.mat")
 
 # Extract datasets
@@ -38,28 +39,29 @@ X_norm = (X - trial_min) / (trial_max - trial_min + eps)
 
 print("Shape after normalization:", X_norm.shape)
 
-# Feature extraction per trial
-# Using basic features: peak-to-peak, mean, Hjorth parameters
+# P300-specific feature extraction per trial/channel
+# Features per channel:
+# 1. peak amplitude
+# 2. peak latency (ms)
+# 3. mean amplitude
+# 4. area under curve
+# 5. standard deviation
 feature_list = []
+
 for trial in X_norm:  # trial: (channels, time)
     trial_features = []
+
     for ch in trial:
-        
-        mean = np.mean(ch)
-        ptp = np.ptp(ch) 
+        max_amp = np.max(ch)
+        max_latency = times[np.argmax(ch)]   # uses full epoch time axis
+        mean_amp = np.mean(ch)
+        auc = np.sum(ch)
+        std_amp = np.std(ch)
 
-        # Hjorth manually --  activity, mobility, complexity
-        diff1 = np.diff(ch)
-        diff2 = np.diff(diff1)
+        trial_features.extend([max_amp, max_latency, mean_amp, auc, std_amp])
 
-        activity = np.var(ch)
-        mobility = np.sqrt(np.var(diff1) / (activity + 1e-8))
-        complexity = np.sqrt(np.var(diff2) / (np.var(diff1) + 1e-8)) / (mobility + 1e-8)
-
-        hjorth = (activity, mobility, complexity)
-
-        trial_features.extend([ptp, mean] + list(hjorth))
     feature_list.append(trial_features)
+
 
 features_array = np.array(feature_list)
 print("Features array shape:", features_array.shape)
@@ -99,5 +101,3 @@ print("Saved X_norm.npy, X_features.npy, and y.npy")
 #time_mask = (times >= tmin) & (times <= tmax)
 #X_window = X[:, :, time_mask]
 #print("Shape after time window selection:", X_window.shape)
-
-# if this is not fast enough --> import eeglib # for feature extraction, install via pip if needed (pip install eeglib)
