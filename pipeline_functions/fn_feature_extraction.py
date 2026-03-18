@@ -6,7 +6,7 @@ from scipy.io import loadmat
 import numpy as np 
 
 
-def extractFeatures(dataset, save_filepath = None):
+def extractFeatures(dataset, times, save_filepath = None):
     """
     extracts features from an eeg dataset
 
@@ -43,31 +43,37 @@ def extractFeatures(dataset, save_filepath = None):
 
     print("Shape after normalization:", X_norm.shape)
 
-    # Feature extraction per trial
-    # Example using EEGLib basic features: variance, mean, Hjorth parameters
+    # P300-specific feature extraction per trial/channel
+    # Features per channel:
+    # 1. peak amplitude
+    # 2. peak latency (ms)
+    # 3. mean amplitude
+    # 4. area under curve
+    # 5. standard deviation
     feature_list = []
-    for trial in X_norm:  # trial: (channels, time)
+
+    for trial in X:  # trial: (channels, time)
         trial_features = []
+
         for ch in trial:
-        
-            mean = np.mean(ch)
-            ptp = np.ptp(ch) 
+            max_amp = np.max(ch)
+            max_latency = times[np.argmax(ch)]   # uses full epoch time axis
+            mean_amp = np.mean(ch)
+            auc = np.sum(ch)
+            std_amp = np.std(ch)
 
-            # Hjorth manually --  activity, mobility, complexity
-            diff1 = np.diff(ch)
-            diff2 = np.diff(diff1)
+            trial_features.extend([max_amp, max_latency, mean_amp, auc, std_amp])
 
-            activity = np.var(ch)
-            mobility = np.sqrt(np.var(diff1) / (activity + 1e-8))
-            complexity = np.sqrt(np.var(diff2) / (np.var(diff1) + 1e-8)) / (mobility + 1e-8)
-
-            hjorth = (activity, mobility, complexity)
-
-            trial_features.extend([ptp, mean] + list(hjorth))
         feature_list.append(trial_features)
 
     features_array = np.array(feature_list)
     print("Features array shape:", features_array.shape)
+
+    # Normalize feature array
+    features_min = features_array.min(axis=0, keepdims=True)
+    features_max = features_array.max(axis=0, keepdims=True)
+
+    fe_norm = (features_array - features_min) / (features_max - features_min + eps)
 
     # Save tensor and features -- currently to desktop, adjust path as needed 
 
@@ -81,7 +87,7 @@ def extractFeatures(dataset, save_filepath = None):
     tensor_reshaped = X_norm.reshape(X_norm.shape[0], -1)
     print("Reshaped tensor for SNN input:", tensor_reshaped.shape)
 
-    return X_norm, features_array
+    return X_norm, features_array, fe_norm
 
 # Notes:
 # - X_norm is the time-series EEG for spike encoding / SNN input
