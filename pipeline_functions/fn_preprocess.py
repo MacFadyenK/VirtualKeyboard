@@ -1,6 +1,6 @@
 import numpy as np
-from scipy.signal import butter, filtfilt
-from scipy.io import loadmat
+from scipy.signal import butter, filtfilt, detrend
+from scipy.io import loadmat, savemat
 import h5py
 import mat73
 
@@ -15,13 +15,30 @@ def preprocess_training(file_path, save_path=None):
     Returns:
     - all_epochs: numpy array containing the preprocessed EEG signal data in shape (channels, time, signal)
     - labels: labels corresponding to the class of each signal in all_epochs
+    - time: the time each epoch takes up
     """
-    #data = loadmat(file_path, squeeze_me=True, struct_as_record=False)
     data = mat73.loadmat(file_path)
 
     labels=[]
     all_epochs=[]
+
     
+    # define parameters, sampling rate (512hz) and epoch length (600ms)
+    samplingrate = float(data['train'][0]['srate'])
+
+    baseline_length = round(0.2 * samplingrate)
+    epoch_length = round(0.6 * samplingrate)
+
+    # channels for use
+    selected_channels = np.array([31,32,12,13,19,14,18,16]) - 1
+
+    # Design bandpass filter (0.5–15 Hz)
+    b, a = butter(4, [0.5/(samplingrate/2), 15/(samplingrate/2)], btype='bandpass')
+    padlen = 3 * (max(len(a), len(b)) - 1)
+
+    all_epochs_list = []
+    labels_list = []
+
     for n_train in range(len(data['train'])):
         t2 = data['train'][n_train]
 
@@ -29,85 +46,70 @@ def preprocess_training(file_path, save_path=None):
         target_indices = np.where(t2["markers_target"] == 1)[0]
         nontarget_indices = np.where(t2["markers_target"] == 2)[0]
 
-        # define parameters, sampling rate (512hz) and epoch length (600ms)
-        samplingrate = t2['srate']
-        epoch_length = int(round(0.6 * samplingrate))
-
-        # Design bandpass filter (0.5–15 Hz)
-        b, a = butter(4, [0.5/(samplingrate/2), 15/(samplingrate/2)], btype='bandpass')
-
-        # Use raw EEG data
-        raw_data = t2['data']
-
-        # Pick first target stimulus
-        firstargetstimulus = target_indices[0]
-
-        pz_index = 12   # MATLAB 13 -> Python index 12
-
-        time = np.arange(epoch_length) / samplingrate * 1000  # milliseconds
-
-        # lets us create these arrays, channels, samples, and number of trials
-        target_epochs = np.zeros((32, epoch_length, len(target_indices)))
-        nontarget_epochs = np.zeros((32, epoch_length, len(nontarget_indices)))
-
-        # Extract all target trials
-        for i in range(len(target_indices)):
-            firstargetstimulus = target_indices[i]
-            target_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
-
-        # Extract all nontarget trials
-        for i in range(len(nontarget_indices)):
-            firstargetstimulus = nontarget_indices[i]
-            nontarget_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
-
-        filteredepochs = np.zeros_like(target_epochs)
-        filterednontargetepochs = np.zeros_like(nontarget_epochs)
-
-        # Filter target trials
-        for i in range(len(target_indices)):
-            filteredepochs[:, :, i] = filtfilt(b, a, target_epochs[:, :, i], axis=1)
-
-        # Filter nontarget trials
-        for i in range(len(nontarget_indices)):
-            filterednontargetepochs[:, :, i] = filtfilt(b, a, nontarget_epochs[:, :, i], axis=1)
-
-        # Average across trials
-        average_target = np.mean(filteredepochs, axis=2)
-        average_nontarget = np.mean(filterednontargetepochs, axis=2)
-
         time = np.arange(epoch_length) / samplingrate * 1000
 
-        # Compile dataset
-        numberof_target = filteredepochs.shape[2]
-        numberof_nontarget = filterednontargetepochs.shape[2]
-        # print(numberof_target)
-        # print(numberof_nontarget)
+        raw_data = t2['data'][selected_channels, :]
+        
+        # Extract all target trials
+        for stim in target_indices:
+            if stim - baseline_length > 0 and stim + epoch_length <= raw_data.shape[1]:
+                baseline = np.mean(raw_data[:, stim-baseline_length:stim+1], axis=1)
 
-        if n_train == 0:
-            labels = np.concatenate((np.ones(numberof_target, dtype=np.int64), np.zeros(numberof_nontarget, dtype=np.int64)))
+                epoch = raw_data[:, stim:stim+epoch_length]
 
-            all_epochs = np.concatenate((filteredepochs, filterednontargetepochs), axis=2)
-        else:
-            labels = np.concatenate((labels, np.ones(numberof_target, dtype=np.int64), np.zeros(numberof_nontarget, dtype=np.int64)))
+                epoch = epoch - baseline[:, None]
 
-            all_epochs = np.dstack((all_epochs, filteredepochs, filterednontargetepochs))
-    
+                epoch = detrend(epoch, axis=1, type='linear')
+
+                epoch = filtfilt(b, a, epoch, axis=1, padtype='odd', padlen=padlen)
+                
+                epoch = epoch.astype(np.float32, copy=False)
+
+                all_epochs_list.append(epoch)
+                labels_list.append(1)
+
+        # Extract all nontarget trials
+        for stim in nontarget_indices:
+            if stim - baseline_length > 0 and stim + epoch_length <= raw_data.shape[1]:
+                baseline = np.mean(raw_data[:, stim-baseline_length:stim+1], axis=1)
+
+                epoch = raw_data[:, stim:stim+epoch_length]
+
+                epoch = epoch - baseline[:, None]
+
+                epoch = detrend(epoch, axis=1, type='linear')
+
+                epoch = filtfilt(b, a, epoch, axis=1, padtype='odd', padlen=padlen)
+
+                epoch = epoch.astype(np.float32, copy=False)
+
+                all_epochs_list.append(epoch)
+                labels_list.append(0)
+
+    # Compile dataset
+    all_epochs = np.stack(all_epochs_list, axis=2)
+    labels = np.array(labels_list, dtype=np.int64)
 
 
     # Save dataset as NPZ (Python format)
     if save_path is not None:
-        np.savez(
-            save_path,
-            filtered_target_epochs=filteredepochs,
-            filtered_nontarget_epochs=filterednontargetepochs,
-            all_epochs=all_epochs,
-            labels=labels,
-            average_target=average_target,
-            average_nontarget=average_nontarget,
-            samplingrate=samplingrate,
-            time=time,
-            pz_index=pz_index
-        )
+        savemat(save_path,
+            {'all_epochs': all_epochs,
+            'labels': labels,
+            'time': time})
         print("Preprocessed EEG dataset saved successfully.")
 
-    return all_epochs, labels
+    return all_epochs, labels, time
+
+
+def find_times(file_path):
+    data = mat73.loadmat(file_path)
+    samplingrate = data['train'][0]['srate']
+    epoch_length = int(round(0.6 * samplingrate))
+
+    time = np.arange(epoch_length) / samplingrate * 1000  # milliseconds
+
+    print("Times min:", time.min())
+    print("Times max:", time.max())
+    print("Times shape:", time.shape)
+    return time
