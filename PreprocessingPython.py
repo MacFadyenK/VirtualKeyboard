@@ -1,87 +1,89 @@
 import numpy as np
-import scipy.io
-from scipy.signal import butter, filtfilt
-import matplotlib.pyplot as plt
+import mat73
+from scipy.io import savemat, loadmat
+from scipy.signal import butter, filtfilt, detrend
 
-data = scipy.io.loadmat(r'C:\Users\MikeK\Downloads\s17_v72.mat', squeeze_me=True, struct_as_record=False)
+# =========================
+# LOAD MATLAB FILE (RAW DATA)
+# =========================
+data = mat73.loadmat('/Users/mikepasamba/Desktop/MATLAB_Preprocessing/s17.mat')
+
+
 
 t2 = data['train'][0]
 
-# lets us see where target stimulus and where non target stim is
-target_indices = np.where(t2.markers_target == 1)[0]
-nontarget_indices = np.where(t2.markers_target == 2)[0]
+print("Raw data shape:", t2['data'].shape)
 
-# define parameters, sampling rate (512hz) and epoch length (600ms)
-samplingrate = t2.srate
-epoch_length = int(round(0.6 * samplingrate))
+samplingrate = float(t2['srate'])
 
-# Design bandpass filter (0.5–15 Hz)
+baseline_samples = round(0.2 * samplingrate)
+epoch_samples = round(0.6 * samplingrate)
+
+# =========================
+# FILTER DESIGN (MATLAB MATCH)
+# =========================
 b, a = butter(4, [0.5/(samplingrate/2), 15/(samplingrate/2)], btype='bandpass')
 
-# Use raw EEG data
-raw_data = t2.data
+selected_channels = np.array([31,32,12,13,19,14,18,16]) - 1
 
-# Pick first target stimulus
-firstargetstimulus = target_indices[0]
+time = np.arange(epoch_samples) / samplingrate * 1000
 
-# Extract 600 ms window after stimulus
-one_trial = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
+raw_data = t2['data'][selected_channels, :]
 
-pz_index = 12   # MATLAB 13 -> Python index 12
+markers_seq = np.array(t2['markers_seq'])
 
-time = np.arange(epoch_length) / samplingrate * 1000  # milliseconds
+flash_indices = np.where((markers_seq >= 1) & (markers_seq <= 12))[0]
+flash_ids = markers_seq[flash_indices]
 
-# lets us create these arrays, channels, samples, and number of trials
-target_epochs = np.zeros((32, epoch_length, len(target_indices)))
-nontarget_epochs = np.zeros((32, epoch_length, len(nontarget_indices)))
+all_epochs = []
+all_flash_ids = []
 
-# Extract all target trials
-for i in range(len(target_indices)):
-    firstargetstimulus = target_indices[i]
-    target_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
+# =========================
+# EPOCH LOOP
+# =========================
+for i in range(len(flash_indices)):
 
-# Extract all nontarget trials
-for i in range(len(nontarget_indices)):
-    firstargetstimulus = nontarget_indices[i]
-    nontarget_epochs[:, :, i] = raw_data[:, firstargetstimulus:firstargetstimulus + epoch_length]
+    stim = flash_indices[i]
 
-filteredepochs = np.zeros_like(target_epochs)
-filterednontargetepochs = np.zeros_like(nontarget_epochs)
+    if stim - baseline_samples > 0 and stim + epoch_samples <= raw_data.shape[1]:
 
-# Filter target trials
-for i in range(len(target_indices)):
-    filteredepochs[:, :, i] = filtfilt(b, a, target_epochs[:, :, i], axis=1)
+        baseline = np.mean(raw_data[:, stim-baseline_samples:stim+1], axis=1)
 
-# Filter nontarget trials
-for i in range(len(nontarget_indices)):
-    filterednontargetepochs[:, :, i] = filtfilt(b, a, nontarget_epochs[:, :, i], axis=1)
+        epoch = raw_data[:, stim:stim+epoch_samples]
 
-# Average across trials
-average_target = np.mean(filteredepochs, axis=2)
-average_nontarget = np.mean(filterednontargetepochs, axis=2)
+        epoch = epoch - baseline[:, None]
 
-time = np.arange(epoch_length) / samplingrate * 1000
+        epoch = detrend(epoch, axis=1, type='linear')
 
-# Filter single trial
-one_trial_filtered = filtfilt(b, a, one_trial, axis=1)
+        padlen = 3 * (max(len(a), len(b)) - 1)
+        epoch = filtfilt(b, a, epoch, axis=1, padtype='odd', padlen=padlen)
 
-# Plot raw vs filtered
-plt.figure()
+        all_epochs.append(epoch)
+        all_flash_ids.append(flash_ids[i])
 
-plt.plot(time, one_trial[pz_index, :], 'k', label='Raw')
-plt.plot(time, one_trial_filtered[pz_index, :], 'r', label='Filtered')
+all_epochs = np.stack(all_epochs, axis=2)
+all_flash_ids = np.array(all_flash_ids)
 
-plt.legend()
-plt.title('Single Trial - Raw vs Bandpass Filtered - 0.5-15Hz')
-plt.xlabel('Time (ms)')
-plt.ylabel('Amplitude')
+# =========================
+# SAVE PYTHON OUTPUT
+# =========================
+savemat('/Users/mikepasamba/Desktop/MATLAB_Preprocessing/S17_FlashEpochs_Preprocessing_PYTHON.mat',
+        {'all_epochs': all_epochs,
+         'all_flash_ids': all_flash_ids,
+         'time': time})
 
-plt.show()
+print('Python dataset saved :)')
 
-# Access flash order
-t24 = data['train'][0]
+# =========================
+# LOAD MATLAB OUTPUT FOR COMPARISON
+# =========================
+m = loadmat('/Users/mikepasamba/Desktop/MATLAB_Preprocessing/S17_FlashEpochs_Preprocessing_MATLAB.mat')
 
-flash_indices = np.where(t24.markers_seq > 0)[0]
-flash_order = t24.markers_seq[flash_indices]
+print("MATLAB shape:", m['all_epochs'].shape)
+print("Python shape:", all_epochs.shape)
 
-print(flash_order[:30])
+diff = np.abs(m['all_epochs'] - all_epochs)
+
+print("MAX DIFFERENCE:", np.max(diff))
+print("MEAN DIFFERENCE:", np.mean(diff))
+
