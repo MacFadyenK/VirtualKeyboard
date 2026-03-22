@@ -36,10 +36,10 @@ def extractFeatures(dataset, times, save_filepath = None):
     # Normalize each trial (0–1)
     eps = 1e-8
 
-    trial_min = X.min(axis=(1, 2), keepdims=True)
-    trial_max = X.max(axis=(1, 2), keepdims=True)
+    ch_min = X.min(axis=(0, 2), keepdims=True)
+    ch_max = X.max(axis=(0, 2), keepdims=True)
 
-    X_norm = (X - trial_min) / (trial_max - trial_min + eps)
+    X_norm = (X - ch_min) / (ch_max - ch_min + eps)
 
     print("Shape after normalization:", X_norm.shape)
 
