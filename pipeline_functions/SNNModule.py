@@ -5,7 +5,7 @@ from snntorch import utils
 import torch
 import torch.nn as nn
 
-def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9], thresholds=[1, 1]):
+def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], thresholds=[1, 1, 1]):
     """
     Function wrapper that initiates a fully connected 3 layer SNN model
     
@@ -27,17 +27,21 @@ class fcSNN(nn.Module):
         super().__init__()
 
         # initializes lif and linear layers for the SNN
-        self.fc1 = nn.Linear(dim_inputs, hidden_layer)
+        self.fc1 = nn.Linear(dim_inputs, hidden_layer[0])
         self.lif1 = snn.Leaky(beta=betas[0], threshold=thresholds[0], init_hidden=True)
-        self.fc2 = nn.Linear(hidden_layer, num_outputs)
-        self.lif2 = snn.Leaky(beta=betas[1], threshold=thresholds[1], init_hidden=True, output=True)
+        self.fc2 = nn.Linear(hidden_layer[0], hidden_layer[1])
+        self.lif2 = snn.Leaky(beta=betas[1], threshold=thresholds[1], init_hidden=True)
+        self.fc3 = nn.Linear(hidden_layer[1], num_outputs)
+        self.lif3 = snn.Leaky(beta=betas[2], threshold=thresholds[2], init_hidden=True, output=True)
 
         # initializes fully connected layer weights and biases in a small normal distribution.
         # weights are skewed positive to encourage positive membrane potentials and to produce output spikes
-        nn.init.normal_(self.fc1.weight, mean=0.015, std=0.007)
-        nn.init.normal_(self.fc2.weight, mean=0.01, std=0.02)
+        nn.init.normal_(self.fc1.weight, mean=0.03, std=0.02)
+        nn.init.normal_(self.fc2.weight, mean=0.03, std=0.02)
+        nn.init.normal_(self.fc3.weight, mean=0.03, std=0.02)
         nn.init.normal_(self.fc1.bias, mean=0.0, std=0.001)
-        nn.init.normal_(self.fc2.bias, mean=0.0, std=0.01)
+        nn.init.normal_(self.fc2.bias, mean=0.0, std=0.001)
+        nn.init.normal_(self.fc3.bias, mean=0.0, std=0.01)
     
     def forward(self, x, batch_first=False):
         """
@@ -55,13 +59,13 @@ class fcSNN(nn.Module):
         # transposes x to the form of (time x batch x flattened feature dimension) if not already in that form
         if(batch_first):
             x = x.transpose(0, 1)
-        x = torch.flatten(x, start_dim=2)
+        # x = torch.flatten(x, start_dim=2)
 
         utils.reset(self)
 
         # record final layer
-        spk2_rec = []
-        mem2_rec = []
+        spk_rec = []
+        mem_rec = []
 
         # through the time steps of the data
         for step in range(x.size(0)): # number of time steps in x
@@ -69,9 +73,14 @@ class fcSNN(nn.Module):
             spk1 = self.lif1(cur1)
 
             cur2 = self.fc2(spk1)
-            spk2, mem2 = self.lif2(cur2)
+            spk2 = self.lif2(cur2)
 
-            spk2_rec.append(spk2)
-            mem2_rec.append(mem2)
+            cur3 = self.fc3(spk2)
+            spk3, mem3 = self.lif3(cur3)
+
+            # mem3 = torch.clamp(mem3, max=5.0)
+
+            spk_rec.append(spk3)
+            mem_rec.append(mem3)
         
-        return torch.stack(spk2_rec, dim=0), torch.stack(mem2_rec, dim=0)
+        return torch.stack(spk_rec, dim=0), torch.stack(mem_rec, dim=0)
