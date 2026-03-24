@@ -1,10 +1,11 @@
 # imports
 import snntorch as snn
+from snntorch import utils
 
 import torch
 import torch.nn as nn
 
-def createSNN(dim_inputs, hidden_layer, num_outputs=2, beta=0.9):
+def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], thresholds=[1, 1, 1]):
     """
     Function wrapper that initiates a fully connected 3 layer SNN model
     
@@ -12,24 +13,35 @@ def createSNN(dim_inputs, hidden_layer, num_outputs=2, beta=0.9):
     - dim_inputs: dimension size of the input features (flattened)
     - hidden_layer: number of neurons in the hidden layer of the model
     - num_outputs: number of output neurons/classes in the model. Default = 2
-    - beta: decay constant for the LIF neurons. Default = 0.9
+    - betas: decay constant for each LIF neuron layer as an array. Default = [0.9, 0.9]
+    - thresholds: array of membrane potential thresholds for the neurons in each layer to produce a spike, Default = [1, 1]
 
     Returns: 
     - A fully connected 3 layer spiking neural network with the specified parameters
     """
-    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, beta=beta)
+    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds)
 
 
 class fcSNN(nn.Module):
-    def __init__(self, dim_inputs, hidden_layer, num_outputs, beta):
+    def __init__(self, dim_inputs, hidden_layer, num_outputs, betas, thresholds):
         super().__init__()
 
         # initializes lif and linear layers for the SNN
-        # uses one beta for both lif neuron layers, can be updated if we need more control
-        self.fc1 = nn.Linear(dim_inputs, hidden_layer)
-        self.lif1 = snn.Leaky(beta=beta)
-        self.fc2 = nn.Linear(hidden_layer, num_outputs)
-        self.lif2 = snn.Leaky(beta=beta)
+        self.fc1 = nn.Linear(dim_inputs, hidden_layer[0])
+        self.lif1 = snn.Leaky(beta=betas[0], threshold=thresholds[0], init_hidden=True)
+        self.fc2 = nn.Linear(hidden_layer[0], hidden_layer[1])
+        self.lif2 = snn.Leaky(beta=betas[1], threshold=thresholds[1], init_hidden=True)
+        self.fc3 = nn.Linear(hidden_layer[1], num_outputs)
+        self.lif3 = snn.Leaky(beta=betas[2], threshold=thresholds[2], init_hidden=True, output=True)
+
+        # initializes fully connected layer weights and biases in a small normal distribution.
+        # weights are skewed positive to encourage positive membrane potentials and to produce output spikes
+        nn.init.normal_(self.fc1.weight, mean=0.03, std=0.02)
+        nn.init.normal_(self.fc2.weight, mean=0.03, std=0.02)
+        nn.init.normal_(self.fc3.weight, mean=0.03, std=0.02)
+        nn.init.normal_(self.fc1.bias, mean=0.0, std=0.001)
+        nn.init.normal_(self.fc2.bias, mean=0.0, std=0.001)
+        nn.init.normal_(self.fc3.bias, mean=0.0, std=0.01)
     
     def forward(self, x, batch_first=False):
         """
@@ -47,25 +59,28 @@ class fcSNN(nn.Module):
         # transposes x to the form of (time x batch x flattened feature dimension) if not already in that form
         if(batch_first):
             x = x.transpose(0, 1)
-        x = torch.flatten(x, start_dim=2)
+        # x = torch.flatten(x, start_dim=2)
 
-        #initializing hidden states of lif neurons
-        mem1 = self.lif1.init_leaky()
-        mem2 = self.lif2.init_leaky()
+        utils.reset(self)
 
         # record final layer
-        spk2_rec = []
-        mem2_rec = []
+        spk_rec = []
+        mem_rec = []
 
         # through the time steps of the data
         for step in range(x.size(0)): # number of time steps in x
             cur1 = self.fc1(x[step])
-            spk1, mem1 = self.lif1(cur1, mem1)
+            spk1 = self.lif1(cur1)
 
             cur2 = self.fc2(spk1)
-            spk2, mem2 = self.lif2(cur2, mem2)
+            spk2 = self.lif2(cur2)
 
-            spk2_rec.append(spk2)
-            mem2_rec.append(mem2)
+            cur3 = self.fc3(spk2)
+            spk3, mem3 = self.lif3(cur3)
+
+            # mem3 = torch.clamp(mem3, max=5.0)
+
+            spk_rec.append(spk3)
+            mem_rec.append(mem3)
         
-        return torch.stack(spk2_rec, dim=0), torch.stack(mem2_rec, dim=0)
+        return torch.stack(spk_rec, dim=0), torch.stack(mem_rec, dim=0)

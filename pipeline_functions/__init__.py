@@ -1,1 +1,1 @@
-__all__ = ["fn_feature_extraction", "SNNModule", "spike_encoding", "train"]
+__all__ = ["fn_feature_extraction", "fn_preprocess", "SNNModule", "spike_encoding", "train"]

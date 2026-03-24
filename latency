@@ -1,0 +1,78 @@
+import numpy as np
+import time
+
+# --- Part 1: EEG Data & Character Mapping ---
+fs = 256
+n_samples = 100
+
+# Simulated EEG data (100 samples, 4 channels)
+eeg_data = np.random.rand(n_samples, 4)
+
+# Mean of each channel (axis=0 calculates mean down the columns)
+eeg_features = np.mean(eeg_data, axis=0)
+print(f"EEG Features (Mean of 4 Channels):\n{eeg_features}\n")
+
+# Simulated Probability Matrix (2 rows, 4 columns)
+prob_matrix = np.random.rand(2, 4)
+prob_matrix = prob_matrix / np.sum(prob_matrix)  # Normalize to sum to 1
+print(f"Simulated Probability Matrix:\n{prob_matrix}\n")
+
+# Row and Column probabilities
+row_probabilities = np.sum(prob_matrix, axis=1)
+column_probabilities = np.sum(prob_matrix, axis=0)
+
+# Find indices of max values (Python uses 0-based indexing)
+indexrow = np.argmax(row_probabilities)
+indexcol = np.argmax(column_probabilities)
+
+letters = ['A', 'E', 'H', 'N', 'O', 'R', 'S', 'T']
+# Map 2x4 grid to 1D index: (row_index * num_columns) + col_index
+selected_char = letters[indexrow * 4 + indexcol]
+
+print(f"Selected Character: {selected_char}")
+print("-" * 40)
+
+# --- Part 2: Latency & Energy Calculation ---
+
+# Example EEG window (8 channels, 256 samples)
+eeg_window = np.random.rand(8, 256)
+
+# Start total latency timer
+total_start = time.perf_counter()
+
+# 1. Preprocessing (Standardization)
+t1 = time.perf_counter()
+# We use keepdims=True to ensure the mean/std shapes align for broadcasting
+processed = (eeg_window - np.mean(eeg_window, axis=1, keepdims=True)) / np.std(eeg_window, axis=1, keepdims=True)
+preprocess_time = (time.perf_counter() - t1) * 1000  # Convert to ms
+
+# 2. Spike Encoding (Thresholding)
+t2 = time.perf_counter()
+spike_train = (processed > 0.5).astype(int)
+encoding_time = (time.perf_counter() - t2) * 1000
+
+# 3. SNN Inference (Mock)
+t3 = time.perf_counter()
+weights = np.random.rand(8, 8)
+# Use '@' for matrix multiplication in Python
+snn_output = weights @ np.mean(spike_train, axis=1)
+snn_time = (time.perf_counter() - t3) * 1000
+
+# 4. Decision Logic
+t4 = time.perf_counter()
+predicted_key = np.argmax(snn_output)
+decision_time = (time.perf_counter() - t4) * 1000
+
+total_latency_ms = (time.perf_counter() - total_start) * 1000
+
+# Energy Calculation
+average_power = 20  # Watts
+energy = average_power * (total_latency_ms / 1000)  # Energy = Power * Time (sec)
+
+# Display Results
+print(f"Total Latency: {total_latency_ms:.4f} ms")
+print(f"  - Preprocessing: {preprocess_time:.4f} ms")
+print(f"  - Encoding:      {encoding_time:.4f} ms")
+print(f"  - SNN Inference: {snn_time:.4f} ms")
+print(f"  - Decision:      {decision_time:.4f} ms")
+print(f"\nEnergy per Inference: {energy:.6f} Joules") 

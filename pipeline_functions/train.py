@@ -1,11 +1,13 @@
 import snntorch as snn
 from snntorch import functional as SF
 
+import numpy as np
+
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split, TensorDataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, random_split, Dataset, TensorDataset, WeightedRandomSampler
 
-def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, update_every=5, batch_first=False):
+def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, loss_style = 'spk', update_every=5, checkpoint_path=None, batch_first=False):
     """
     trains an SNN model for the specified number of epochs
     
@@ -19,8 +21,11 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
                  spikes, not membrane voltage
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
+    - loss_style: whether to compute loss based on spikes or on membrane potential: 
+            for spikes, enter 'spk', for membrane potential, enter 'mem'
     - update_every: Positive integer. Prints training loss, training accuracy, validation loss, and validation accuracy for epochs
                     divisible by update_every. If no number given, prints every 5 epochs
+    - checkpoint_path: file path to the location which to save the training checkpoints
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
@@ -30,28 +35,37 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
                         key - train_acc: value - list of the accuracy from the train_loader dataset for each epoch
                         key - val_acc: value - list of the accuracy from the val_loader dataset for each epoch
     """
-    training_history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+    training_history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": [], "train_bal_acc": [], "val_bal_acc": []}
     # loop through all epochs
     for e in range(num_epochs):
         # train model for one epoch and append the loss and accuracy to the history
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, batch_first=batch_first)
+        train_loss, train_acc, train_counts, train_bal_acc = train_epoch(model, train_loader, criterion, optimizer, device, loss_style=loss_style, batch_first=batch_first)
         training_history["train_loss"].append(train_loss)
         training_history["train_acc"].append(train_acc)
+        training_history["train_bal_acc"].append(train_bal_acc)
 
         # check loss and accuracy on validation set and add to the history
-        val_loss, val_acc = validate_snn(model, val_loader, criterion, device, batch_first=batch_first)
+        val_loss, val_acc, avg_spk, max_mem, total_counts, val_bal_acc = validate_snn(model, val_loader, criterion, device, loss_style=loss_style, batch_first=batch_first)
         training_history["val_loss"].append(val_loss)
         training_history["val_acc"].append(val_acc)
+        training_history["val_bal_acc"].append(val_bal_acc)
 
         # print training status update after the specified number of epochs pass
-        if e % update_every == 0:
-            print(f"Epoch {e}: Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc*100:.2f}%, " + 
-                  f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc*100:.2f}%")
+        if (e+1) % update_every == 0:
+            if checkpoint_path is not None:
+                checkpoint = f'{checkpoint_path}/checkpoint_e{e+1}.tar'
+                save_checkpoint(e, model=model, optimizer=optimizer, loss=train_loss, history=training_history, path=checkpoint)
+            print(f"Epoch {e+1}: Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc*100:.2f}%, Training Balanced Accuracy: {train_bal_acc*100:.2f}%, \n" + 
+                  f"    Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc*100:.2f}%, Validation Balanced Accuracy: {val_bal_acc*100:.2f}%")
+            print(f"    Avg output spike rate: {avg_spk:.4f}")
+            print(f"    Avg output membrane max: {max_mem:.4f}")
+            print(f"    Predictions for each class on Training Set: {train_counts}")
+            print(f"    Predictions for each class on Val Set: {total_counts}")
     
     return training_history
         
 
-def train_epoch(model, train_loader, criterion, optimizer, device, batch_first = False):
+def train_epoch(model, train_loader, criterion, optimizer, device,loss_style='spk', batch_first = False):
     """
     trains a SNN model for one epoch
     
@@ -62,6 +76,8 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
                  spikes, not membrane voltage
     - optimizer: the optimizer model to be used for training
     - device: the device which the model is in. e.g. cuda, cpu
+    - loss_style: whether to compute loss based on spikes or on membrane potential: 
+                for spikes, enter 'spk', for membrane potential, enter 'mem'
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
@@ -74,16 +90,35 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
     total = 0
     acc = -1
 
+    TP, FN, TN, FP = 0, 0, 0, 0
+
+    # to count classification of each class
+    total_counts = torch.zeros(2, dtype=torch.long, device=device)
+
     model.train()
     # loop through entire training set
     for x, y in train_loader:
         x, y = x.to(device), y.to(device)
 
         # forward pass
-        spk_rec, _ = model(x, batch_first=batch_first)
+        spk_rec, mem_rec = model(x, batch_first=batch_first)
 
         # loss calculation
-        loss = criterion(spk_rec, y)
+        # Compute loss on spike trains
+        if loss_style == 'mem':
+            mem_mean = mem_rec.mean(dim=0)
+            loss = criterion(mem_mean, y)
+            # spike_rate = spk_rec.mean()
+            # if spike_rate > 0.15:
+            #     loss += 0.1 * (spike_rate - 0.15) ** 2
+        elif loss_style == 'spk':
+            spike_counts = spk_rec.sum(dim=0)
+            spike_rates = spike_counts / spk_rec.size(0)  # per neuron, normalized over time
+            loss = criterion(spike_rates, y)
+        elif loss_style == 'mse':
+            loss = criterion(spk_rec, y)
+        else:
+            raise ValueError("Invalid loss type input")
 
         # calculating gradients and weights
         optimizer.zero_grad()
@@ -91,20 +126,37 @@ def train_epoch(model, train_loader, criterion, optimizer, device, batch_first =
         optimizer.step()
 
         # adding batch loss to total loss
-        total_loss += loss.item() * spk_rec.size(1)
+        total_loss += loss.item() * y.size(0)
 
         # adding batch correct to total correct (assuming rate encoding)
-        num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
+
+        #num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
+        
+        # number of each class predicted in training set
+        spike_counts = spk_rec.sum(dim=0)
+        pred = spike_counts.argmax(dim=1)
+        num_correct += (pred == y).sum().item()
+        TP += ((pred == 1) & (y == 1)).sum().item()
+        FN += ((pred == 0) & (y == 1)).sum().item()
+        FP += ((pred == 1) & (y == 0)).sum().item()
+        TN += ((pred == 0) & (y == 0)).sum().item()
+
+        class_counts = torch.bincount(pred, minlength=2)
+        total_counts += class_counts
 
         #adding to total number in training set
-        total += spk_rec.size(1)
+        total += y.size(0)
 
     # calculating the average loss and accuracy across the training set
     avg_loss = total_loss/total
-    acc = num_correct/total
-    return avg_loss, acc
 
-def validate_snn(model, val_loader, criterion, device, batch_first=False):
+    sensitivity = TP/(TP+FN)
+    specificity = TN/(TN+FP)
+    bal_acc = (sensitivity+specificity)/2
+    acc = num_correct/total
+    return avg_loss, acc, total_counts, bal_acc
+
+def validate_snn(model, val_loader, criterion, device, loss_style='spk', batch_first=False):
     """
     evaluates a SNN model on the entire validation set
     
@@ -114,43 +166,105 @@ def validate_snn(model, val_loader, criterion, device, batch_first=False):
     - criterion: the loss function to be used to calculate loss. Must be from snnTorch and use output
                  spikes, not membrane voltage
     - device: the device which the model is in. e.g. cuda, cpu
+    - loss_style: whether to compute loss based on spikes or on membrane potential: 
+                  for spikes, enter 'spk', for membrane potential, enter 'mem'
     - batch_first: whether the data has the batch as first dimension or time steps as first dimension
 
     Returns:
     - avg_loss: total loss across the validation set divided by the number of samples in the val_loader
     - acc: accuracy of the model on the data in val_loader
+    - avg_spike_rate: average rate of spiking of the output neurons for the validation set
+    - avg_membrane_max: cross batch average of the maximum membrane potential produced by the output LIF neurons
+    - total_counts: total number of predictions of the validation set for each class. [nonP300, P300]
     """
     model.eval()
     total_loss = 0.0
     num_correct = 0
     total = 0
 
+    # for spike output monitoring
+    total_output_spikes = 0
+    total_mem2_max = 0
+    total_steps = 0
+
+    # to count classification of each class
+    total_counts = torch.zeros(2, dtype=torch.long, device=device)
+
+    TP, FN, TN, FP = 0, 0, 0, 0
+
     with torch.no_grad():
         for x, y in val_loader:
             x, y = x.to(device), y.to(device)
 
             # Reset SNN state if model supports it
-            if hasattr(model, "reset"):
-                model.reset()
+            # if hasattr(model, "reset"):
+            #     model.reset()
 
             # forward pass
-            spk_rec, _ = model(x, batch_first=batch_first)
+            spk_rec, mem_rec = model(x, batch_first=batch_first)
+
+            # Output spikes
+            out_spk_rate = spk_rec.mean().item()
+            total_output_spikes += out_spk_rate
+            total_mem2_max += mem_rec.max().item()
+            total_steps += 1
 
             # Compute loss on spike trains
-            loss = criterion(spk_rec, y)
+            if loss_style == 'mem':
+                mem_mean = mem_rec.mean(dim=0)
+                loss = criterion(mem_mean, y)
+                # spike_rate = spk_rec.mean()
+                # if spike_rate > 0.15:
+                #     loss += 0.1 * (spike_rate - 0.15) ** 2
+            elif loss_style == 'spk':
+                spike_counts = spk_rec.sum(dim=0)
+                spike_rates = spike_counts / spk_rec.size(0)  # per neuron, normalized over time
+                loss = criterion(spike_rates, y)
+            elif loss_style == 'mse':
+                loss = criterion(spk_rec, y)
+            else:
+                raise ValueError("Invalid loss type input")
 
             # adding batch loss to total loss
-            total_loss += loss.item() * spk_rec.size(1)
+            total_loss += loss.item() * y.size(0)
 
             # adding batch correct to total correct (assuming rate encoding)
-            num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
+            # num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
+            
+            spike_counts = spk_rec.sum(dim=0)
+            pred = spike_counts.argmax(dim=1)
+            num_correct += (pred == y).sum().item()
+            TP += ((pred == 1) & (y == 1)).sum().item()
+            FN += ((pred == 0) & (y == 1)).sum().item()
+            FP += ((pred == 1) & (y == 0)).sum().item()
+            TN += ((pred == 0) & (y == 0)).sum().item()
+
+            class_counts = torch.bincount(pred, minlength=2)
+            total_counts += class_counts
 
             # adding to total number in training set
-            total += spk_rec.size(1)
+            total += y.size(0)
+
+    avg_spk_rate = total_output_spikes/total_steps
+    avg_membrane_max = total_mem2_max/total_steps
 
     avg_loss = total_loss / total
+    sensitivity = TP/(TP+FN + 1e-8)
+    specificity = TN/(TN+FP + 1e-8)
+    bal_acc = (sensitivity+specificity)/2
     acc = num_correct / total
-    return avg_loss, acc
+    return avg_loss, acc, avg_spk_rate, avg_membrane_max, total_counts, bal_acc
+
+def save_checkpoint(epoch, model, optimizer, loss, history, path):
+    """Saves the training state to a file."""
+    state = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+        'history': history
+    }
+    torch.save(state, path)
 
 def prepare_training_data(X, y, batch_size, balanced = True):
     """
@@ -169,7 +283,7 @@ def prepare_training_data(X, y, batch_size, balanced = True):
     - test_loader: pytorch dataloader for testing dataset
     """
     # change into pytorch tensors
-    X_tensor = torch.from_numpy(X)
+    X_tensor = torch.from_numpy(X).float()
     y_tensor = torch.from_numpy(y)
 
     # load into a tensor dataset
@@ -190,15 +304,21 @@ def prepare_training_data(X, y, batch_size, balanced = True):
 
     train_dataset, val_dataset, test_dataset = random_split(full_dataset, lengths)
 
-    sampler = None
+    # creating a sampler out P300 and non-P300 samples for training set so they are closer to 50/50
+    train_labels = y_tensor[train_dataset.indices]
+    class_counts = torch.bincount(train_labels)
+    print("Training Class Counts: ", class_counts)
+    # Calculate inverse frequencies
+    class_weights = 1.0 / class_counts
+
+    # Normalize weights (optional, but often helpful)
+    class_weights = class_weights / class_weights.sum() * len(class_counts) 
+
+    print("Training Class Weights:", class_weights)
+    
+    train_loader=None
+
     if balanced:
-        # creating a sampler out P300 and non-P300 samples for training set so they are closer to 50/50
-        train_labels = torch.tensor([full_dataset[i][1] for i in train_dataset.indices])
-        class_counts = torch.bincount(train_labels)
-        print("Training Class Counts: ", class_counts)
-        # Calculate inverse frequencies
-        class_weights = 1.0 / class_counts
-        print("Training Class Weights:", class_weights)
         # Assign weight to each sample based on its class
         sample_weights = class_weights[train_labels]
 
@@ -207,9 +327,91 @@ def prepare_training_data(X, y, batch_size, balanced = True):
             len(sample_weights), 
             replacement=True # Allows oversampling of minority classes
         )
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=2)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader, class_weights
+
+
+class EEGMemmapDataset(Dataset):
+    def __init__(self, X_path, y_path, X_shape):
+        """
+        Memory-efficient EEG dataset using numpy memmap.
+        
+        Inputs:
+        - X_path: path to memmap .dat file for EEG features (float32)
+        - y_path: path to memmap .dat file for labels (int64)
+        - X_shape: tuple, shape of X (num_samples, channels, timesteps)
+        """
+        self.X = np.memmap(X_path, dtype='int8', mode='r').reshape(X_shape)
+        self.y = np.memmap(y_path, dtype='int64', mode='r')
+
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self, idx):
+        # convert to float only for this batch
+        x = torch.from_numpy(self.X[idx].copy()).float()  # 0/1 → float
+        y = torch.tensor(self.y[idx], dtype=torch.long)
+        return x, y
+
+
+def prepare_training_data_memmap(X_path, y_path, X_shape, batch_size, balanced=True,
+                                 train_ratio=0.7, val_ratio=0.15, test_ratio=0.15,
+                                 pin_memory=True, num_workers=2):
+    """
+    Prepares train/val/test DataLoaders using memory-mapped EEG arrays.
+    """
+    # Load dataset (memory-mapped)
+    full_dataset = EEGMemmapDataset(X_path, y_path, X_shape)
+    total_size = len(full_dataset)
+    
+    # Split indices
+    total_size = len(full_dataset)
+    train_size = int(train_ratio * total_size)
+    val_size = int(val_ratio * total_size)
+    test_size = total_size - train_size - val_size
+
+    lengths = [train_size, val_size, test_size]
+    print(f"Train size: {train_size}, Val size: {val_size}, Test size: {test_size}")
+
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, lengths)
+
+
+    train_labels = full_dataset.y[train_dataset.indices]  # memmap indexing, no copy
+    class_counts = np.bincount(train_labels)
+    print("Training Class Counts: ", class_counts)
+    class_weights = 1.0 / class_counts
+    class_weights = class_weights / class_weights.sum() * len(class_counts)
+    print("Training Class Weights:", class_weights)
+
+    if balanced:
+        sample_weights = class_weights[train_labels].astype(np.float32)
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  sampler=sampler, pin_memory=pin_memory,
+                                  num_workers=num_workers)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  shuffle=True, pin_memory=pin_memory,
+                                  num_workers=num_workers)
+
+    val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                            shuffle=False, pin_memory=pin_memory,
+                            num_workers=num_workers)
+
+    test_loader = DataLoader(test_dataset, batch_size=batch_size,
+                             shuffle=False, pin_memory=pin_memory,
+                             num_workers=num_workers)
+    
+    class_weights = torch.from_numpy(class_weights).float()
+
+    return train_loader, val_loader, test_loader, class_weights
