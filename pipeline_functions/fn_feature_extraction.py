@@ -2,21 +2,24 @@
 # basic feature extraction (peak-to-peak, mean, Hjorth parameters) and save as .npy for SNN input. We can 
 # add time window and features as needed! - Madalyn  3-4-2026
 
-from scipy.io import loadmat
+from scipy.io import loadmat, savemat
 import numpy as np 
 
 
-def extractFeatures(dataset, times, save_filepath = None):
+def extractFeatures(dataset, y, k=5, factor=5, save_filepath = None):
     """
     extracts features from an eeg dataset
 
     Inputs:
     - dataset: can be either a preloaded dataset of features or a filepath to a saved .mat dataset
+    - y: labelling of each sample in X, can either be P300 binary labels for training or flash_ids for testing
+    - k: how many trials to average together for class averaging
+    - factor: the factor by which to downsample time series data
     - save_filepath: filepath for location save feature extracted dataset. If None, files are not saved
 
     Outputs:
-    - X_norm: normalized time series data before feature extraction
-    - features_array: feature extracted numpy dataset
+    - X_norm: normalized time series data after feature extraction. Shape (trials/k, time/factor, channels)
+    - y: y after trial averaging. Shape = original shape / k
     """
     X = None
     # Load .mat file -- Michael is adding to GitHub, but adjust filename as needed
@@ -24,6 +27,7 @@ def extractFeatures(dataset, times, save_filepath = None):
     if(isinstance(dataset, str)):
         mat = loadmat(dataset)
         X = mat['all_epochs']
+        y = mat['labels']
     # if dataset is directly input
     else:
         X = dataset
@@ -33,7 +37,13 @@ def extractFeatures(dataset, times, save_filepath = None):
 
     print("X shape:", X.shape)
 
-    # Normalize each trial (0–1)
+    # averaging k trials together to reduce noise
+    X, y = average_by_class(X, y, k=k)
+
+    # time downsampling with decimation by average, from 307 time points -> 62 time points
+    X = decimation_by_avg(X, factor)
+
+    # Normalize each trial per channel (0–1)
     eps = 1e-8
 
     ch_min = X.min(axis=(0, 2), keepdims=True)
@@ -41,7 +51,7 @@ def extractFeatures(dataset, times, save_filepath = None):
 
     X_norm = (X - ch_min) / (ch_max - ch_min + eps)
 
-    print("Shape after normalization:", X_norm.shape)
+    print("Shape after feature extraction:", X_norm.shape)
 
     # P300-specific feature extraction per trial/channel
     # Features per channel:
@@ -50,44 +60,47 @@ def extractFeatures(dataset, times, save_filepath = None):
     # 3. mean amplitude
     # 4. area under curve
     # 5. standard deviation
-    feature_list = []
+    # feature_list = []
 
-    for trial in X:  # trial: (channels, time)
-        trial_features = []
+    # for trial in X:  # trial: (channels, time)
+    #     trial_features = []
 
-        for ch in trial:
-            max_amp = np.max(ch)
-            max_latency = times[np.argmax(ch)]   # uses full epoch time axis
-            mean_amp = np.mean(ch)
-            auc = np.sum(ch)
-            std_amp = np.std(ch)
+    #     for ch in trial:
+    #         max_amp = np.max(ch)
+    #         max_latency = times[np.argmax(ch)]   # uses full epoch time axis
+    #         mean_amp = np.mean(ch)
+    #         auc = np.sum(ch)
+    #         std_amp = np.std(ch)
 
-            trial_features.extend([max_amp, max_latency, mean_amp, auc, std_amp])
+    #         trial_features.extend([max_amp, max_latency, mean_amp, auc, std_amp])
 
-        feature_list.append(trial_features)
+    #     feature_list.append(trial_features)
 
-    features_array = np.array(feature_list)
-    print("Features array shape:", features_array.shape)
+    # features_array = np.array(feature_list)
+    # print("Features array shape:", features_array.shape)
 
-    # Normalize feature array
-    features_min = features_array.min(axis=0, keepdims=True)
-    features_max = features_array.max(axis=0, keepdims=True)
+    # # Normalize feature array
+    # features_min = features_array.min(axis=0, keepdims=True)
+    # features_max = features_array.max(axis=0, keepdims=True)
 
-    fe_norm = (features_array - features_min) / (features_max - features_min + eps)
+    # fe_norm = (features_array - features_min) / (features_max - features_min + eps)
 
     # Save tensor and features -- currently to desktop, adjust path as needed 
 
 
     if save_filepath is not None:
-        np.save(save_filepath + "X_norm.npy", X_norm)                 # (trials, channels, time)
-        np.save(save_filepath + "X_features.npy", features_array)     # (trials, 160)
-        print("Saved X_norm.npy, X_features.npy")
+        savemat(save_filepath,
+            {'X': X_norm,
+            'y': y})
+        #np.save(save_filepath + "X_norm.npy", X_norm)                 # (trials, channels, time)
+        # np.save(save_filepath + "X_features.npy", features_array)     # (trials, 160)
+        # print("Saved X_norm.npy, X_features.npy")
 
     # (nTrials x nFeatures) reshape for SNN input
-    tensor_reshaped = X_norm.reshape(X_norm.shape[0], -1)
-    print("Reshaped tensor for SNN input:", tensor_reshaped.shape)
+    # tensor_reshaped = X_norm.reshape(X_norm.shape[0], -1)
+    # print("Reshaped tensor for SNN input:", tensor_reshaped.shape)
 
-    return X_norm, features_array, fe_norm
+    return X_norm, y # features_array, fe_norm
 
 # Notes:
 # - X_norm is the time-series EEG for spike encoding / SNN input
@@ -111,3 +124,39 @@ def extractFeatures(dataset, times, save_filepath = None):
 #time_mask = (times >= tmin) & (times <= tmax)
 #X_window = X[:, :, time_mask]
 #print("Shape after time window selection:", X_window.shape)
+
+def average_by_class(X, y, k=5):
+    """ averages k number of trials in X of the same class in y together"""
+    X_avg, y_avg = [], []
+
+    for cls in np.unique(y):
+        X_cls = X[y == cls]
+
+        for i in range(0, len(X_cls) - k + 1, k):
+            X_avg.append(X_cls[i:i+k].mean(axis=0))
+            y_avg.append(cls)
+
+    return np.stack(X_avg), np.array(y_avg)
+
+def decimation_by_avg(data, factor):
+    """Function for replacing each sequence of previous factor samples with their average"""
+    # as appears in Won et al., 2022
+    # for example, frame [0, 800]ms -> 17samples (Krusienski et al., 2006)
+    # data.shape = [trial, ch, time]
+    ratio_dsample = factor
+    n_trial, n_ch, n_frame = data.shape
+
+    #print(n_frame)
+    decimated_frame = int(np.floor(n_frame/ratio_dsample))
+    #print(decimated_frame)
+
+    # memory pre-allocation
+    decimated_data = np.zeros((n_trial, n_ch, decimated_frame))
+    #print(decimated_data.shape)
+
+    for i in range(n_trial):
+        for j in range(decimated_frame):
+            cur_data = data[i, :, :]
+            decimated_data[i, :, j] = np.mean(cur_data[:, j*ratio_dsample:(j+1)*ratio_dsample], axis=1)
+
+    return decimated_data
