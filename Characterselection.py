@@ -21,11 +21,10 @@ def create_flash_matrix(tensor): #(time, sample, num_outputs)
     #Adjusted verison without uses the nested for loops. Can go back if needed. 
     hits_per_flash = tensor[:, :, 1].sum(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
     for index in range(len(hits_per_flash)):
-    #for index, hits in enumerate(hits_per_flash): #Keeps track of the index of the flash (0-11) and the number of hits for that flash. The index corresponds to either a row or a column in the 6x6 grid.
         if (index % 12) < 6:  # column flashes
-            flash_matrix[:, index] += hits_per_flash[index]
+            flash_matrix[index, :] += hits_per_flash[index]
         else:          # row flashes
-            flash_matrix[index - 6, :] += hits_per_flash[index]
+            flash_matrix[:, index - 6] += hits_per_flash[index]
     return flash_matrix
 
 #P300 speller cycle character selection function
@@ -46,6 +45,7 @@ def p300_speller_cycle(tensor):
     return predicted_letter, row_idx, col_idx, row_totals, col_totals
 
 tensor = []
+
 #Printing the letter with the highest score in the row and column.
 predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor) 
 
