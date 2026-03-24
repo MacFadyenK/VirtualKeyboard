@@ -21,9 +21,9 @@ def create_flash_matrix(tensor): #(time, sample, num_outputs)
     #Adjusted verison without uses the nested for loops. Can go back if needed. 
     hits_per_flash = tensor[:, :, 1].sum(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
     for index in range(len(hits_per_flash)):
-        if (index % 12) < 6:  # column flashes
+        if (index % 12) < 6:  # row flashes
             flash_matrix[index, :] += hits_per_flash[index]
-        else:          # row flashes
+        else:          # column flashes
             flash_matrix[:, index - 6] += hits_per_flash[index]
     return flash_matrix
 
