@@ -139,7 +139,7 @@ def preprocess_testing(file_path, use_training = False, save_path = None):
 
     all_epochs = []
     all_flash_ids = []
-    for n in range(len(data)):
+    for n in range(len(t1)):
         t2 = t1[n]
 
         raw_data = t2['data'][selected_channels, :]
