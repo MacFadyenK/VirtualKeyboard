@@ -40,8 +40,16 @@ def extractFeatures(dataset, y, k=5, factor=5, save_filepath = None):
     # averaging k trials together to reduce noise
     X, y = average_by_class(X, y, k=k)
 
-    # time downsampling with decimation by average, from 307 time points -> 62 time points
+    # time downsampling with decimation by average according to the factor
     X = decimation_by_avg(X, factor)
+
+    # narrow to peak P300 window
+    t_min, t_max = 105, 440
+    t_step = 600/X.shape[2]
+    step_min = round(t_min/t_step)
+    step_max = round(t_max/t_step)
+
+    X = X[:, :, step_min:step_max]
 
     # Normalize each trial per channel (0–1)
     eps = 1e-8
@@ -53,54 +61,13 @@ def extractFeatures(dataset, y, k=5, factor=5, save_filepath = None):
 
     print("Shape after feature extraction:", X_norm.shape)
 
-    # P300-specific feature extraction per trial/channel
-    # Features per channel:
-    # 1. peak amplitude
-    # 2. peak latency (ms)
-    # 3. mean amplitude
-    # 4. area under curve
-    # 5. standard deviation
-    # feature_list = []
-
-    # for trial in X:  # trial: (channels, time)
-    #     trial_features = []
-
-    #     for ch in trial:
-    #         max_amp = np.max(ch)
-    #         max_latency = times[np.argmax(ch)]   # uses full epoch time axis
-    #         mean_amp = np.mean(ch)
-    #         auc = np.sum(ch)
-    #         std_amp = np.std(ch)
-
-    #         trial_features.extend([max_amp, max_latency, mean_amp, auc, std_amp])
-
-    #     feature_list.append(trial_features)
-
-    # features_array = np.array(feature_list)
-    # print("Features array shape:", features_array.shape)
-
-    # # Normalize feature array
-    # features_min = features_array.min(axis=0, keepdims=True)
-    # features_max = features_array.max(axis=0, keepdims=True)
-
-    # fe_norm = (features_array - features_min) / (features_max - features_min + eps)
-
-    # Save tensor and features -- currently to desktop, adjust path as needed 
-
 
     if save_filepath is not None:
         savemat(save_filepath,
             {'X': X_norm,
             'y': y})
-        #np.save(save_filepath + "X_norm.npy", X_norm)                 # (trials, channels, time)
-        # np.save(save_filepath + "X_features.npy", features_array)     # (trials, 160)
-        # print("Saved X_norm.npy, X_features.npy")
 
-    # (nTrials x nFeatures) reshape for SNN input
-    # tensor_reshaped = X_norm.reshape(X_norm.shape[0], -1)
-    # print("Reshaped tensor for SNN input:", tensor_reshaped.shape)
-
-    return X_norm, y # features_array, fe_norm
+    return X_norm, y
 
 # Notes:
 # - X_norm is the time-series EEG for spike encoding / SNN input
