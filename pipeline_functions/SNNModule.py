@@ -1,11 +1,11 @@
 # imports
 import snntorch as snn
-from snntorch import utils
+from snntorch import utils, surrogate
 
 import torch
 import torch.nn as nn
 
-def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], thresholds=[1, 1, 1]):
+def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], thresholds=[1, 1, 1], sigmoid_slope = 10):
     """
     Function wrapper that initiates a fully connected 3 layer SNN model
     
@@ -19,29 +19,25 @@ def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], th
     Returns: 
     - A fully connected 3 layer spiking neural network with the specified parameters
     """
-    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds)
+    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds, sigmoid_slope=sigmoid_slope)
 
 
 class fcSNN(nn.Module):
-    def __init__(self, dim_inputs, hidden_layer, num_outputs, betas, thresholds):
+    def __init__(self, dim_inputs, hidden_layer, num_outputs, betas, thresholds, sigmoid_slope):
         super().__init__()
 
         # initializes lif and linear layers for the SNN
         self.fc1 = nn.Linear(dim_inputs, hidden_layer[0])
-        self.lif1 = snn.Leaky(beta=betas[0], threshold=thresholds[0], init_hidden=True)
+        self.lif1 = snn.Leaky(beta=betas[0], threshold=thresholds[0], init_hidden=True, spike_grad=surrogate.fast_sigmoid(slope=sigmoid_slope))
         self.fc2 = nn.Linear(hidden_layer[0], hidden_layer[1])
-        self.lif2 = snn.Leaky(beta=betas[1], threshold=thresholds[1], init_hidden=True)
+        self.lif2 = snn.Leaky(beta=betas[1], threshold=thresholds[1], init_hidden=True, spike_grad=surrogate.fast_sigmoid(slope=sigmoid_slope))
         self.fc3 = nn.Linear(hidden_layer[1], num_outputs)
-        self.lif3 = snn.Leaky(beta=betas[2], threshold=thresholds[2], init_hidden=True, output=True)
+        self.lif3 = snn.Leaky(beta=betas[2], threshold=thresholds[2], init_hidden=True, output=True, spike_grad=surrogate.fast_sigmoid(slope=sigmoid_slope))
 
-        # initializes fully connected layer weights and biases in a small normal distribution.
-        # weights are skewed positive to encourage positive membrane potentials and to produce output spikes
-        nn.init.normal_(self.fc1.weight, mean=0.03, std=0.02)
-        nn.init.normal_(self.fc2.weight, mean=0.03, std=0.02)
-        nn.init.normal_(self.fc3.weight, mean=0.03, std=0.02)
-        nn.init.normal_(self.fc1.bias, mean=0.0, std=0.001)
-        nn.init.normal_(self.fc2.bias, mean=0.0, std=0.001)
-        nn.init.normal_(self.fc3.bias, mean=0.0, std=0.01)
+        # initializes fully connected layer weights with kaiming uniform distribution
+        nn.init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu') 
+        nn.init.kaiming_uniform_(self.fc2.weight, nonlinearity='relu')
+        nn.init.kaiming_uniform_(self.fc3.weight, nonlinearity='relu')
     
     def forward(self, x, batch_first=False):
         """
@@ -77,8 +73,6 @@ class fcSNN(nn.Module):
 
             cur3 = self.fc3(spk2)
             spk3, mem3 = self.lif3(cur3)
-
-            # mem3 = torch.clamp(mem3, max=5.0)
 
             spk_rec.append(spk3)
             mem_rec.append(mem3)

@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split, Dataset, TensorDataset, WeightedRandomSampler
 
-def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, device, loss_style = 'spk', update_every=5, checkpoint_path=None, batch_first=False):
+def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, scheduler, device, loss_style = 'spk', update_every=5, checkpoint_path=None, batch_first=False):
     """
     trains an SNN model for the specified number of epochs
     
@@ -50,11 +50,15 @@ def train(model, num_epochs, train_loader, val_loader, criterion, optimizer, dev
         training_history["val_acc"].append(val_acc)
         training_history["val_bal_acc"].append(val_bal_acc)
 
+        scheduler.step(val_loss)
+
         # print training status update after the specified number of epochs pass
         if (e+1) % update_every == 0:
-            if checkpoint_path is not None:
+            
+            if checkpoint_path is not None: # saving a checkpoint
                 checkpoint = f'{checkpoint_path}/checkpoint_e{e+1}.tar'
-                save_checkpoint(e, model=model, optimizer=optimizer, loss=train_loss, history=training_history, path=checkpoint)
+                save_checkpoint(e, model=model, optimizer=optimizer, scheduler = scheduler, loss=train_loss, history=training_history, path=checkpoint)
+            
             print(f"Epoch {e+1}: Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc*100:.2f}%, Training Balanced Accuracy: {train_bal_acc*100:.2f}%, \n" + 
                   f"    Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc*100:.2f}%, Validation Balanced Accuracy: {val_bal_acc*100:.2f}%")
             print(f"    Avg output spike rate: {avg_spk:.4f}")
@@ -115,8 +119,15 @@ def train_epoch(model, train_loader, criterion, optimizer, device,loss_style='sp
             spike_counts = spk_rec.sum(dim=0)
             spike_rates = spike_counts / spk_rec.size(0)  # per neuron, normalized over time
             loss = criterion(spike_rates, y)
+            #spike regularization to encourage lower spiking rate ~0.35
+            loss = loss + 0.05 * (spk_rec.mean() - 0.35)**2
         elif loss_style == 'mse':
             loss = criterion(spk_rec, y)
+        elif loss_style == 'hybrid':
+            mem_mean = mem_rec.mean(dim=0)
+            spike_counts = spk_rec.sum(dim=0)
+            spike_rates = spike_counts / spk_rec.size(0)
+            loss = criterion(spike_rates, y) + 0.5* criterion(mem_mean, y)
         else:
             raise ValueError("Invalid loss type input")
 
@@ -127,33 +138,33 @@ def train_epoch(model, train_loader, criterion, optimizer, device,loss_style='sp
 
         # adding batch loss to total loss
         total_loss += loss.item() * y.size(0)
-
-        # adding batch correct to total correct (assuming rate encoding)
-
-        #num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
         
-        # number of each class predicted in training set
+        # predictions for each class
         spike_counts = spk_rec.sum(dim=0)
         pred = spike_counts.argmax(dim=1)
-        num_correct += (pred == y).sum().item()
+
+        num_correct += (pred == y).sum().item() # adding batch correct to total correct
+
+        # confusion matrix values
         TP += ((pred == 1) & (y == 1)).sum().item()
         FN += ((pred == 0) & (y == 1)).sum().item()
         FP += ((pred == 1) & (y == 0)).sum().item()
         TN += ((pred == 0) & (y == 0)).sum().item()
 
+        # how many of each class was predicted
         class_counts = torch.bincount(pred, minlength=2)
         total_counts += class_counts
 
         #adding to total number in training set
         total += y.size(0)
 
-    # calculating the average loss and accuracy across the training set
+    # calculating the average loss and accuracies across the training set
     avg_loss = total_loss/total
-
     sensitivity = TP/(TP+FN)
     specificity = TN/(TN+FP)
     bal_acc = (sensitivity+specificity)/2
     acc = num_correct/total
+
     return avg_loss, acc, total_counts, bal_acc
 
 def validate_snn(model, val_loader, criterion, device, loss_style='spk', batch_first=False):
@@ -196,10 +207,6 @@ def validate_snn(model, val_loader, criterion, device, loss_style='spk', batch_f
         for x, y in val_loader:
             x, y = x.to(device), y.to(device)
 
-            # Reset SNN state if model supports it
-            # if hasattr(model, "reset"):
-            #     model.reset()
-
             # forward pass
             spk_rec, mem_rec = model(x, batch_first=batch_first)
 
@@ -220,47 +227,60 @@ def validate_snn(model, val_loader, criterion, device, loss_style='spk', batch_f
                 spike_counts = spk_rec.sum(dim=0)
                 spike_rates = spike_counts / spk_rec.size(0)  # per neuron, normalized over time
                 loss = criterion(spike_rates, y)
+                #spike regularization to encourage lower spiking rate ~0.35
+                loss = loss + 0.05 * (spk_rec.mean() - 0.35)**2
             elif loss_style == 'mse':
                 loss = criterion(spk_rec, y)
+            elif loss_style == 'hybrid':
+                mem_mean = mem_rec.mean(dim=0)
+                spike_counts = spk_rec.sum(dim=0)
+                spike_rates = spike_counts / spk_rec.size(0)
+                loss = criterion(spike_rates, y) + 0.5* criterion(mem_mean, y)
             else:
                 raise ValueError("Invalid loss type input")
 
             # adding batch loss to total loss
             total_loss += loss.item() * y.size(0)
 
-            # adding batch correct to total correct (assuming rate encoding)
-            # num_correct += SF.accuracy_rate(spk_rec, y) * spk_rec.size(1)
-            
+            #get predictions
             spike_counts = spk_rec.sum(dim=0)
             pred = spike_counts.argmax(dim=1)
-            num_correct += (pred == y).sum().item()
+
+            num_correct += (pred == y).sum().item() # adding batch correct to total correct
+
+            # confusion matrix values
             TP += ((pred == 1) & (y == 1)).sum().item()
             FN += ((pred == 0) & (y == 1)).sum().item()
             FP += ((pred == 1) & (y == 0)).sum().item()
             TN += ((pred == 0) & (y == 0)).sum().item()
 
+            # counting how many of each class is predicted
             class_counts = torch.bincount(pred, minlength=2)
             total_counts += class_counts
 
             # adding to total number in training set
             total += y.size(0)
 
+    # getting spike rate and membrane max
     avg_spk_rate = total_output_spikes/total_steps
     avg_membrane_max = total_mem2_max/total_steps
 
+    # calculating final evaluation values
     avg_loss = total_loss / total
     sensitivity = TP/(TP+FN + 1e-8)
     specificity = TN/(TN+FP + 1e-8)
     bal_acc = (sensitivity+specificity)/2
     acc = num_correct / total
+
     return avg_loss, acc, avg_spk_rate, avg_membrane_max, total_counts, bal_acc
 
-def save_checkpoint(epoch, model, optimizer, loss, history, path):
+def save_checkpoint(epoch, model, optimizer, scheduler, loss, history, path):
     """Saves the training state to a file."""
     state = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
         'loss': loss,
         'history': history
     }
