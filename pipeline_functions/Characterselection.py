@@ -20,16 +20,16 @@ def create_flash_matrix(tensor, y): #(time, sample, num_outputs)
 
     hits_per_flash = tensor[:, :, 1].sum(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
 
-    y = np.array(y).flatten()  # Ensure y is a 1D array for easier indexing. This flattens the array in case it's not already one-dimensional.
-    y = np.clip(y, 0, 11).astype(int)  # safely clip to 0-11
+    # y = np.array(y).flatten()  # Ensure y is a 1D array for easier indexing. This flattens the array in case it's not already one-dimensional.
+    # y = np.clip(y, 0, 11).astype(int)  # safely clip to 0-11
 
     #Adjusted verison without uses the nested for loops. Can go back if needed. 
     for idx in range(len(hits_per_flash)):
         y_val = y[idx]
-        if 0 <= y_val <= 5:       # row flash
-            flash_matrix[y_val, :] += hits_per_flash[idx]
-        elif 6 <= y_val <= 11:    # column flash
-            flash_matrix[:, y_val - 6] += hits_per_flash[idx]
+        if y_val <=6:       # row flash
+            flash_matrix[y_val - 1, :] += hits_per_flash[idx]
+        elif 6 < y_val <= 12:    # column flash
+            flash_matrix[:, y_val - 7] += hits_per_flash[idx]
         # ignore invalid y_val
 
     return flash_matrix  # Return after the loop
