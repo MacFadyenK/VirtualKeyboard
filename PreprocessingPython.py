@@ -87,3 +87,21 @@ diff = np.abs(m['all_epochs'] - all_epochs)
 print("MAX DIFFERENCE:", np.max(diff))
 print("MEAN DIFFERENCE:", np.mean(diff))
 
+# =========================
+# GET CORRECT CHARACTERS IN ORDER
+# =========================
+correct_chars = list(t2['text_to_spell'])
+# output of correct chars = ['B', 'R', 'A', 'I', 'N']
+
+flashes_per_char = len(all_flash_ids) // len(correct_chars)
+all_char_labels = []
+for i in range(len(all_flash_ids)):
+    char_idx = min(i // flashes_per_char, len(correct_chars) - 1)
+    all_char_labels.append(correct_chars[char_idx])
+all_char_labels = np.array(all_char_labels)
+# output of all_char_labels =
+    # epochs 0–179 → 'B'
+    # epochs 180–359 → 'R'
+    # epochs 360–539 → 'A'
+    # epochs 540–719 → 'I'
+    # epochs 720–899 → 'N'
