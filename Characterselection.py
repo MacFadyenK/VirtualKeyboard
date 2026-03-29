@@ -14,23 +14,20 @@ def create_flash_matrix(tensor, y): #(time, sample, num_outputs)
 
     flash_matrix = np.zeros((6, 6)) #Initialize a 6x6 matrix of zeros to represent the flash pattern.
     
-    tensor = tensor.detach().clone() if isinstance(tensor, torch.Tensor) else torch.tensor(tensor)
+    #tensor = tensor.detach().clone() if isinstance(tensor, torch.Tensor) else torch.tensor(tensor) #Include if given dimension issues
     tensor = tensor.permute(1, 0, 2) # changes to (sample, time, num_outputs)
     tensor = tensor.cpu().numpy() # Convert the tensor to a NumPy array for easier manipulation. This assumes the tensor is on a GPU; if it's already on the CPU, this step can be skipped. 
 
     hits_per_flash = tensor[:, :, 1].sum(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
 
-    y = np.array(y).flatten()  # Ensure y is a 1D array for easier indexing. This flattens the array in case it's not already one-dimensional.
-    y = np.clip(y, 0, 11).astype(int)  # safely clip to 0-11
 
     #Adjusted verison without uses the nested for loops. Can go back if needed. 
-    for idx in range(len(hits_per_flash)):
-        y_val = y[idx]
-        if 0 <= y_val <= 5:       # row flash
-            flash_matrix[y_val, :] += hits_per_flash[idx]
-        elif 6 <= y_val <= 11:    # column flash
-            flash_matrix[:, y_val - 6] += hits_per_flash[idx]
-        # ignore invalid y_val
+    for index in range(len(hits_per_flash)):
+        print(y[index])
+        if y[index] <= 6: #row flash
+            flash_matrix[y[index]-1, :] += hits_per_flash[index] #Add the hit count to the corresponding row in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing used in Python.
+        else: #column flash
+            flash_matrix[:, y[index]-7] += hits_per_flash[index] #Add the hit count to the corresponding column in the flash matrix. Subtract 7 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
 
     return flash_matrix  # Return after the loop
 
@@ -52,13 +49,13 @@ def p300_speller_cycle(tensor, y):
     return predicted_letter, row_idx, col_idx, row_totals, col_totals
 
 
-#tensor = []
-#y= 0
+tensor = []
+y= 0
 
 #Printing the letter with the highest score in the row and column.
-#predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor, y) 
+predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor, y) 
 
-#print(f"Row scores: {row_scores}")
-#print(f"Column scores: {col_scores}")
-#print(f"Selected Row: {row_idx}, Selected Column: {col_idx}")
-#print(f"Predicted letter: {predicted_letter}")
+print(f"Row scores: {row_scores}")
+print(f"Column scores: {col_scores}")
+print(f"Selected Row: {row_idx}, Selected Column: {col_idx}")
+print(f"Predicted letter: {predicted_letter}")
