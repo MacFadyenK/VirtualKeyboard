@@ -48,14 +48,14 @@ def p300_speller_cycle(tensor, y):
 
     return predicted_letter, row_idx, col_idx, row_totals, col_totals
 
-
-tensor = []
-y= 0
+#Commented out for BCI keyboard pipeline. 
+#tensor = []
+#y= 0
 
 #Printing the letter with the highest score in the row and column.
-predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor, y) 
+#predicted_letter, row_idx, col_idx, row_scores, col_scores = p300_speller_cycle(tensor, y) 
 
-print(f"Row scores: {row_scores}")
-print(f"Column scores: {col_scores}")
-print(f"Selected Row: {row_idx}, Selected Column: {col_idx}")
-print(f"Predicted letter: {predicted_letter}")
+#print(f"Row scores: {row_scores}")
+#print(f"Column scores: {col_scores}")
+#print(f"Selected Row: {row_idx}, Selected Column: {col_idx}")
+#print(f"Predicted letter: {predicted_letter}")
