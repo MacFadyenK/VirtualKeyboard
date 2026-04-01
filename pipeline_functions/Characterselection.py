@@ -33,7 +33,7 @@ def create_flash_matrix(tensor, y): #(time, sample, num_outputs)
             flash_matrix[y[index]-1] += hits_per_flash[index] #Add the hit count to the corresponding row in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing used in Python.
             print(f"Updated flash matrix after row flash: {flash_matrix}") #Print the updated flash matrix after processing a row flash to verify the changes.
         else: #column flash
-            flash_matrix[y[index]-7] += hits_per_flash[index] #Add the hit count to the corresponding column in the flash matrix. Subtract 7 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
+            flash_matrix[y[index]-1] += hits_per_flash[index] #Add the hit count to the corresponding column in the flash matrix. Subtract 7 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
             print(f"Updated flash matrix after column flash: {flash_matrix}") #Print the updated flash matrix after processing a column flash to verify the changes.
 
 #2D array saved
