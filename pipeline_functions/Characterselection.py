@@ -51,12 +51,13 @@ def p300_speller_cycle(tensor, y):
 
     flash_matrix = create_flash_matrix(tensor, y)
 
-    row_totals = flash_matrix[:6]
-    col_totals = flash_matrix[6:]
+    #1D array
+    #row_totals = flash_matrix[:6]
+    #col_totals = flash_matrix[6:]
 
     # Sum across repetitions for 2D array
-    #row_totals = np.sum(flash_matrix, axis=1) #Set to axis=1 to sum across rows, giving a total score for each row. This will help identify which row has the most hits.
-    #col_totals = np.sum(flash_matrix, axis=0) #set to axis=0 to sum across columns, giving a total score for each column. This will help identify which column has the most hits.
+    row_totals = np.sum(flash_matrix, axis=1) #Set to axis=1 to sum across rows, giving a total score for each row. This will help identify which row has the most hits.
+    col_totals = np.sum(flash_matrix, axis=0) #set to axis=0 to sum across columns, giving a total score for each column. This will help identify which column has the most hits.
 
     # Choose max row and column
     row_idx = np.argmax(row_totals)
