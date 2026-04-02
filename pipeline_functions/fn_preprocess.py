@@ -139,6 +139,7 @@ def preprocess_testing(file_path, use_training = False, save_path = None):
 
     all_epochs = []
     all_flash_ids = []
+    all_char_labels = ''
     for n in range(len(t1)):
         t2 = t1[n]
 
@@ -171,8 +172,12 @@ def preprocess_testing(file_path, use_training = False, save_path = None):
                 all_epochs.append(epoch)
                 all_flash_ids.append(flash_ids[i])
 
+        correct_chars = t2['text_to_spell']
+        all_char_labels += correct_chars
+
     all_epochs = np.stack(all_epochs, axis=2)
     all_flash_ids = np.array(all_flash_ids)
+
 
     # =========================
     # SAVE PYTHON OUTPUT
@@ -185,7 +190,7 @@ def preprocess_testing(file_path, use_training = False, save_path = None):
 
         print('Python dataset saved :)')
 
-    return all_epochs, all_flash_ids
+    return all_epochs, all_flash_ids, all_char_labels
 
 
 def find_times(file_path):
