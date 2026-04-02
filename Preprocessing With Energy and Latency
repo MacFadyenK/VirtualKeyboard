@@ -17,9 +17,6 @@ raw_data = t2.data(selected_channels,:);
 flash_indices = find(t2.markers_seq >= 1 & t2.markers_seq <= 12);
 flash_ids = t2.markers_seq(flash_indices);
 
-flash_indices = find(t2.markers_seq >= 1 & t2.markers_seq <= 12);
-flash_ids = t2.markers_seq(flash_indices);
-
 all_epochs = [];
 all_flash_ids = [];
 
