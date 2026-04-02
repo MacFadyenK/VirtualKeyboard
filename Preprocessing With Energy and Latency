@@ -17,8 +17,11 @@ raw_data = t2.data(selected_channels,:);
 flash_indices = find(t2.markers_seq >= 1 & t2.markers_seq <= 12);
 flash_ids = t2.markers_seq(flash_indices);
 
-all_epochs = zeros(length(selected_channels), epoch_samples, length(flash_indices));
-all_flash_ids = zeros(1, length(flash_indices));
+flash_indices = find(t2.markers_seq >= 1 & t2.markers_seq <= 12);
+flash_ids = t2.markers_seq(flash_indices);
+
+all_epochs = [];
+all_flash_ids = [];
 
 energy_per_flop = 5.6e-12;  % Joules per FLOP
 total_flops = 0; % Intitializes total FLOP counter
