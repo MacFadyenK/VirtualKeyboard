@@ -36,8 +36,20 @@ class fcSNN(nn.Module):
 
         # initializes fully connected layer weights with kaiming uniform distribution
         nn.init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu') 
+        # self.fc1.weight.data *= 0.3 
         nn.init.kaiming_uniform_(self.fc2.weight, nonlinearity='relu')
+        # self.fc2.weight.data *= 0.3
         nn.init.kaiming_uniform_(self.fc3.weight, nonlinearity='relu')
+        # self.fc3.weight.data *= 0.3
+
+        # initializes fully connected layer biases with uniform distribution between -0.1 and 0.1
+        nn.init.uniform_(self.fc1.bias, a=-0.1, b=0.1)
+        nn.init.uniform_(self.fc2.bias, a=-0.1, b=0.1)
+        nn.init.uniform_(self.fc3.bias, a=-0.1, b=0.1)
+
+        # nn.init.constant_(self.fc1.bias, 0.05)
+        # nn.init.constant_(self.fc2.bias, 0.05)
+        # nn.init.constant_(self.fc3.bias, 0.05)
     
     def forward(self, x, batch_first=False):
         """

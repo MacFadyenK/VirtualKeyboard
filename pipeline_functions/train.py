@@ -286,7 +286,7 @@ def save_checkpoint(epoch, model, optimizer, scheduler, loss, history, path):
     }
     torch.save(state, path)
 
-def prepare_training_data(X, y, batch_size, balanced = True):
+def prepare_training_data(X, y, batch_size, balanced = True, seed=42):
     """
     transforms numpy arrays for features and labels into dataloaders split for training, validation, and testing
 
@@ -296,6 +296,7 @@ def prepare_training_data(X, y, batch_size, balanced = True):
     - batch_size: sample batch size for dataloaders
     - balanced: whether the training data should be balanced between classes or not. Applies a WeightedRandomSampler 
                 on the training set. Defaults True for a balanced dataset
+    - seed: random seed for reproducibility of dataset splits and dataloader shuffling. Default 42
 
     Outputs:
     - train_loader: pytorch dataloader for training dataset
@@ -319,10 +320,11 @@ def prepare_training_data(X, y, batch_size, balanced = True):
     val_size = int(val_ratio * total_size)
     test_size = total_size - train_size - val_size
 
+    g = torch.Generator().manual_seed(seed) # for reproducibility of splits
     lengths = [train_size, val_size, test_size]
     print(f"Train size: {train_size}, Val size: {val_size}, Test size: {test_size}")
 
-    train_dataset, val_dataset, test_dataset = random_split(full_dataset, lengths)
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, lengths, generator=g)
 
     # creating a sampler out P300 and non-P300 samples for training set so they are closer to 50/50
     train_labels = y_tensor[train_dataset.indices]
@@ -338,6 +340,7 @@ def prepare_training_data(X, y, batch_size, balanced = True):
     
     train_loader=None
 
+    loader_gen = torch.Generator().manual_seed(seed) # for reproducibility of dataloader shuffling
     if balanced:
         # Assign weight to each sample based on its class
         sample_weights = class_weights[train_labels]
@@ -345,14 +348,15 @@ def prepare_training_data(X, y, batch_size, balanced = True):
         sampler = WeightedRandomSampler(
             sample_weights, 
             len(sample_weights), 
-            replacement=True # Allows oversampling of minority classes
+            replacement=True, # Allows oversampling of minority classes
+            generator=loader_gen
         )
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=2)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=0)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, generator=loader_gen)
     
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0, generator=loader_gen)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, generator=loader_gen)
 
     return train_loader, val_loader, test_loader, class_weights
 
