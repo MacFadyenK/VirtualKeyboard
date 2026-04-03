@@ -23,7 +23,7 @@ def create_flash_matrix(tensor, y): #(time, sample, num_outputs)
     tensor = tensor.permute(1, 0, 2) # changes to (sample, time, num_outputs)
     tensor = tensor.cpu().numpy() # Convert the tensor to a NumPy array for easier manipulation. This assumes the tensor is on a GPU; if it's already on the CPU, this step can be skipped. 
 
-    hits_per_flash = tensor[:, :, 1].sum(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
+    hits_per_flash = tensor[:, :, 1].mean(axis=1) #Extract the hit counts for each flash from the tensor for the second column P300.(samples)
     #print(f"Hits per flash: {hits_per_flash}") #Print the hit counts for each flash to verify the values.
 
     non_hits_per_flash = tensor[:, :, 0].sum(axis=1) #Extract the non-hit counts for each flash from the tensor for the first column (non-P300).
@@ -38,10 +38,10 @@ def create_flash_matrix(tensor, y): #(time, sample, num_outputs)
     for index in range(len(hits_per_flash)):
         #print(y[index])
         if y[index] <= 6: #row flash
-            flash_matrix[y[index]-1] += diff_per_flash[index] #Add the hit count to the corresponding row in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing used in Python.
+            flash_matrix[y[index]-1] += hits_per_flash[index] #Add the hit count to the corresponding row in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing used in Python.
             #print(f"Updated flash matrix after row flash: {flash_matrix}") #Print the updated flash matrix after processing a row flash to verify the changes.
         else: #column flash
-            flash_matrix[y[index]-1] += diff_per_flash[index] #Add the hit count to the corresponding column in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
+            flash_matrix[y[index]-1] += hits_per_flash[index] #Add the hit count to the corresponding column in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
             #print(f"Updated flash matrix after column flash: {flash_matrix}") #Print the updated flash matrix after processing a column flash to verify the changes.
 
 #2D array saved
@@ -88,17 +88,17 @@ def create_flash_matrix_probs(tensor, y): #(time, sample, num_outputs)
 
     probs = sp.softmax(logits, axis=1) #Apply the softmax function to the logits to convert them into probabilities. This will give us a (sample, num_outputs) array where each entry represents the probability of that flash being a hit (P300) or non-hit (non-P300).
     P300_probs = probs[:, 1] #Extract the probabilities for the hit class (P300) for each flash. This will give us a (sample,) array where each entry represents the probability of that flash being a hit.
-    print(f"P300 probabilities per flash: {P300_probs}") #Print the P300 probabilities for each flash to verify the values.
+    #print(f"P300 probabilities per flash: {P300_probs}") #Print the P300 probabilities for each flash to verify the values.
     #hits_per_flash = (hits_per_flash - np.mean(hits_per_flash)) / (np.std(hits_per_flash) + 1e-8) #Normalize the hit counts for each flash to have a mean of 0 and a standard deviation of 1, which can help improve the performance of the character selection algorithm by reducing the impact of outliers and scaling the values appropriately.
     #Adjusted verison without uses the nested for loops. Can go back if needed. 
     #1D array 
     for index in range(len(P300_probs)):
         #print(y[index])
         if y[index] <= 6: #row flash
-            flash_matrix[y[index]-1] += P300_probs[index] #Add the hit count to the corresponding row in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing used in Python.
+            flash_matrix[y[index]-1] += np.log(P300_probs[index] + 1e-8) #Add the hit count to the corresponding row in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing used in Python.
             #print(f"Updated flash matrix after row flash: {flash_matrix}") #Print the updated flash matrix after processing a row flash to verify the changes.
         else: #column flash
-            flash_matrix[y[index]-1] += P300_probs[index] #Add the hit count to the corresponding column in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
+            flash_matrix[y[index]-1] += np.log(P300_probs[index] + 1e-8) #Add the hit count to the corresponding column in the flash matrix. Subtract 1 from y[index] to convert from 1-based indexing to 0-based indexing and account for the first 6 rows.
             #print(f"Updated flash matrix after column flash: {flash_matrix}") #Print the updated flash matrix after processing a column flash to verify the changes.
 
     return flash_matrix  # Return after the loop
