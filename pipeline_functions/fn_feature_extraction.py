@@ -39,7 +39,7 @@ def extractFeatures(dataset, y, k=5, factor=5, t_min=105, t_max=440, norm_type='
     # Fix MATLAB->Python dimensions: (trials, channels, time) -- MATLAB used (channels, time, trials)
     X = np.transpose(X, (2, 0, 1))
 
-    print("X shape:", X.shape)
+    # print("X shape:", X.shape)
 
     # averaging k trials together to reduce noise
     X, y = average_by_class_streaming(X, y, k=k)
@@ -70,7 +70,7 @@ def extractFeatures(dataset, y, k=5, factor=5, t_min=105, t_max=440, norm_type='
 
         X_norm = (X - ch_min) / (ch_max - ch_min + eps)
 
-    print("Shape after feature extraction:", X_norm.shape)
+    # print("Shape after feature extraction:", X_norm.shape)
 
 
     if save_filepath is not None:

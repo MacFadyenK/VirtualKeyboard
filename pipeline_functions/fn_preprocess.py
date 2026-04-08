@@ -274,14 +274,14 @@ def load_subject_character_data(file_path, letter):
     for n_test in range(len(t_test)):
         t2 = t_test[n_test]
         if letter in t2['text_to_spell']:
-            print(f"Found {letter} in test set {n_test}")
+            # print(f"Found {letter} in test set {n_test}")
             found_in.append(n_test)
     if not found_in:
         raise ValueError(f"Letter {letter} not found in any test set.")
     
     # randomly select one of the test sets where the letter is found
     selected_test = np.random.choice(found_in)
-    print(f"Randomly selected test set {selected_test} for letter {letter}")
+    # print(f"Randomly selected test set {selected_test} for letter {letter}")
     
     # get data from that test set
     t2 = t_test[selected_test]
@@ -293,7 +293,7 @@ def load_subject_character_data(file_path, letter):
 
     # randomly choose an instance of the target character if it appears multiple times
     position_index = np.random.choice(char_positions)
-    print(f"Randomly selected position {position_index} for letter {letter} in test set {selected_test}")
+    # print(f"Randomly selected position {position_index} for letter {letter} in test set {selected_test}")
     
     markers_seq = np.array(t2['markers_seq'])
 
