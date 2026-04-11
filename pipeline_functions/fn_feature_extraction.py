@@ -6,7 +6,7 @@ from scipy.io import loadmat, savemat
 import numpy as np 
 
 
-def extractFeatures(dataset, y, k=5, factor=5, t_min=105, t_max=440, norm_type='minmax', norm_factor=0.5, save_filepath = None):
+def extractFeatures(dataset, y, factor=5, t_min=105, t_max=440, norm_type='minmax', norm_factor=0.5, save_filepath = None):
     """
     extracts features from an eeg dataset
 
@@ -41,9 +41,6 @@ def extractFeatures(dataset, y, k=5, factor=5, t_min=105, t_max=440, norm_type='
 
     # print("X shape:", X.shape)
 
-    # averaging k trials together to reduce noise
-    X, y = average_by_class_streaming(X, y, k=k)
-
     # time downsampling with decimation by average according to the factor
     X = decimation_by_avg(X, factor)
 
@@ -63,7 +60,7 @@ def extractFeatures(dataset, y, k=5, factor=5, t_min=105, t_max=440, norm_type='
 
         X_norm = (X - ch_mean) / (ch_std + eps)
         # scale
-        X_norm = X_norm *0.5
+        X_norm = X_norm * norm_factor
     elif norm_type == 'minmax':
         ch_min = X.min(axis=(0, 2), keepdims=True)
         ch_max = X.max(axis=(0, 2), keepdims=True)
@@ -112,23 +109,6 @@ def average_by_class(X, y, k=5):
         for i in range(0, len(X_cls) - k + 1, k):
             X_avg.append(X_cls[i:i+k].mean(axis=0))
             y_avg.append(cls)
-
-    return np.stack(X_avg), np.array(y_avg)
-
-from collections import defaultdict
-
-def average_by_class_streaming(X, y, k=5):
-    """Average every k samples per class in the order they are encountered."""
-    buffers = defaultdict(list)   # holds ongoing samples per class
-    X_avg, y_avg = [], []
-
-    for xi, yi in zip(X, y):
-        buffers[yi].append(xi)
-
-        if len(buffers[yi]) == k:
-            X_avg.append(np.mean(buffers[yi], axis=0))
-            y_avg.append(yi)
-            buffers[yi].clear()  # reset for next chunk
 
     return np.stack(X_avg), np.array(y_avg)
 
