@@ -9,7 +9,7 @@ if __name__ == "__main__":
     # create SNN model and load weights
     snn = SNNModule.createSNN(8, [128, 64], betas=[0.95, 0.95, 0.95], thresholds=[1, 1, 1])
     
-    weights_path = base_dir / "model_weights/2hl12864_th072_win2_4_f3_weights.pth"
+    weights_path = base_dir / "model_weights/12864_th09_f3_stdf1_weights.pth"
     print(weights_path)
     weights = torch.load(weights_path, weights_only=True)
     snn.load_state_dict(weights)
@@ -75,10 +75,10 @@ if __name__ == "__main__":
         X, y, time, char = fn_preprocess.preprocess_one_character(character_data)
 
         # feature extraction
-        X, y = fn_feature_extraction.extractFeatures(X, y, k=1, factor=3, t_min=200, t_max=400, norm_type='std')
+        X, y = fn_feature_extraction.extractFeatures(X, y, factor=3, t_min=200, t_max=400, norm_type='std', norm_factor=1)
 
         # delta encoding
-        X_spikes = delta_encoding.delta_encode(X, 0.072)
+        X_spikes = delta_encoding.delta_encode(X, 0.09)
 
         X_spikes = torch.from_numpy(X_spikes).float()
         y = y.astype(int)
