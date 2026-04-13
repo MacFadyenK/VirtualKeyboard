@@ -4,8 +4,9 @@ from snntorch import utils, surrogate
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], thresholds=[1, 1, 1], sigmoid_slope = 10):
+def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9, 0.9], thresholds=[1, 1, 1, 1], sigmoid_slope = 10, p=0.1):
     """
     Function wrapper that initiates a fully connected 3 layer SNN model
     
@@ -19,11 +20,11 @@ def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], th
     Returns: 
     - A fully connected 3 layer spiking neural network with the specified parameters
     """
-    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds, sigmoid_slope=sigmoid_slope)
+    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds, sigmoid_slope=sigmoid_slope, p=0.1)
 
 
 class fcSNN(nn.Module):
-    def __init__(self, dim_inputs, hidden_layer, num_outputs, betas, thresholds, sigmoid_slope):
+    def __init__(self, dim_inputs, hidden_layer, num_outputs, betas, thresholds, sigmoid_slope, p=0.1):
         super().__init__()
 
         # initializes lif and linear layers for the SNN
@@ -33,23 +34,17 @@ class fcSNN(nn.Module):
         self.lif2 = snn.Leaky(beta=betas[1], threshold=thresholds[1], init_hidden=True, spike_grad=surrogate.fast_sigmoid(slope=sigmoid_slope))
         self.fc3 = nn.Linear(hidden_layer[1], num_outputs)
         self.lif3 = snn.Leaky(beta=betas[2], threshold=thresholds[2], init_hidden=True, output=True, spike_grad=surrogate.fast_sigmoid(slope=sigmoid_slope))
+        self.dp = nn.Dropout(p=p)
 
         # initializes fully connected layer weights with kaiming uniform distribution
         nn.init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu') 
-        # self.fc1.weight.data *= 0.3 
         nn.init.kaiming_uniform_(self.fc2.weight, nonlinearity='relu')
-        # self.fc2.weight.data *= 0.3
         nn.init.kaiming_uniform_(self.fc3.weight, nonlinearity='relu')
-        # self.fc3.weight.data *= 0.3
 
         # initializes fully connected layer biases with uniform distribution between -0.1 and 0.1
         nn.init.uniform_(self.fc1.bias, a=-0.1, b=0.1)
         nn.init.uniform_(self.fc2.bias, a=-0.1, b=0.1)
         nn.init.uniform_(self.fc3.bias, a=-0.1, b=0.1)
-
-        # nn.init.constant_(self.fc1.bias, 0.05)
-        # nn.init.constant_(self.fc2.bias, 0.05)
-        # nn.init.constant_(self.fc3.bias, 0.05)
     
     def forward(self, x, batch_first=False):
         """
@@ -78,13 +73,13 @@ class fcSNN(nn.Module):
         # through the time steps of the data
         for step in range(x.size(0)): # number of time steps in x
             cur1 = self.fc1(x[step])
-            spk1 = self.lif1(cur1)
+            spk1 = self.dp(self.lif1(cur1))
 
             cur2 = self.fc2(spk1)
-            spk2 = self.lif2(cur2)
+            spk2 = self.dp(self.lif2(cur2))
 
             cur3 = self.fc3(spk2)
-            spk3, mem3 = self.lif3(cur3)
+            spk3, mem3 = self.lif3(cur3) 
 
             spk_rec.append(spk3)
             mem_rec.append(mem3)
