@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9, 0.9], thresholds=[1, 1, 1, 1], sigmoid_slope = 10, p=0.1):
+def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9], thresholds=[1, 1, 1], sigmoid_slope = 10, p=0.1):
     """
     Function wrapper that initiates a fully connected 3 layer SNN model
     
@@ -20,7 +20,7 @@ def createSNN(dim_inputs, hidden_layer, num_outputs=2, betas=[0.9, 0.9, 0.9, 0.9
     Returns: 
     - A fully connected 3 layer spiking neural network with the specified parameters
     """
-    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds, sigmoid_slope=sigmoid_slope, p=0.1)
+    return fcSNN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, betas=betas, thresholds=thresholds, sigmoid_slope=sigmoid_slope, p=p)
 
 
 class fcSNN(nn.Module):
