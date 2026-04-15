@@ -114,23 +114,19 @@ def average_by_class(X, y, k=5):
 
 def decimation_by_avg(data, factor):
     """Function for replacing each sequence of previous factor samples with their average"""
-    # as appears in Won et al., 2022
-    # for example, frame [0, 800]ms -> 17samples (Krusienski et al., 2006)
+    # altered from what appears in Won et al., 2022
     # data.shape = [trial, ch, time]
-    ratio_dsample = factor
     n_trial, n_ch, n_frame = data.shape
 
     #print(n_frame)
-    decimated_frame = int(np.floor(n_frame/ratio_dsample))
-    #print(decimated_frame)
+    decimated_frame = n_frame//factor
+    # #print(decimated_frame)
 
-    # memory pre-allocation
-    decimated_data = np.zeros((n_trial, n_ch, decimated_frame))
-    #print(decimated_data.shape)
+    # trim data so its divisible by factor
+    data = data[:, :, :decimated_frame * factor]
+    print(data.shape)
 
-    for i in range(n_trial):
-        for j in range(decimated_frame):
-            cur_data = data[i, :, :]
-            decimated_data[i, :, j] = np.mean(cur_data[:, j*ratio_dsample:(j+1)*ratio_dsample], axis=1)
+    # decimate by average
+    decimated_data = data.reshape(n_trial, n_ch, decimated_frame, factor).mean(axis=3)
 
     return decimated_data
