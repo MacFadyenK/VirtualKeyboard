@@ -1,21 +1,20 @@
 import torch
 import torch.nn as nn
+import numpy as np
+import time
 
+# ============================================================
+# ANN DEFINITION
+# ============================================================
 
 def createANN(dim_inputs, hidden_layer, num_outputs=2, dropout=0.2):
     """
     Wrapper that builds a fully connected ANN for EEG classification.
-
-    Inputs:
-    - dim_inputs: flattened input dimension size
-    - hidden_layer: list like [256, 128]
-    - num_outputs: number of output classes. Default = 2
-    - dropout: dropout probability applied after hidden layers. Default = 0.2
-
-    Returns:
-    - fcANN model
     """
-    return fcANN(dim_inputs=dim_inputs, hidden_layer=hidden_layer, num_outputs=num_outputs, dropout=dropout)
+    return fcANN(dim_inputs=dim_inputs, 
+                 hidden_layer=hidden_layer, 
+                 num_outputs=num_outputs, 
+                 dropout=dropout)
 
 
 class fcANN(nn.Module):
@@ -27,16 +26,19 @@ class fcANN(nn.Module):
 
         self.flatten = nn.Flatten(start_dim=1)
 
+        # Layer 1
         self.fc1 = nn.Linear(dim_inputs, hidden_layer[0])
         self.bn1 = nn.BatchNorm1d(hidden_layer[0])
         self.relu1 = nn.ReLU()
         self.drop1 = nn.Dropout(dropout)
 
+        # Layer 2
         self.fc2 = nn.Linear(hidden_layer[0], hidden_layer[1])
         self.bn2 = nn.BatchNorm1d(hidden_layer[1])
         self.relu2 = nn.ReLU()
         self.drop2 = nn.Dropout(dropout)
 
+        # Layer 3 (Output)
         self.fc3 = nn.Linear(hidden_layer[1], num_outputs)
 
         self._init_weights()
@@ -52,14 +54,8 @@ class fcANN(nn.Module):
 
     def forward(self, x):
         """
-        Forward pass for ANN.
-
-        Expected input shapes:
-        - (batch, channels, time)
-        - (batch, features)
-
-        Returns:
-        - logits of shape (batch, num_outputs)
+        Input x shape: (batch, channels, time) or (batch, features)
+        Returns: logits (batch, num_outputs)
         """
         if x.ndim > 2:
             x = self.flatten(x)
@@ -76,3 +72,72 @@ class fcANN(nn.Module):
 
         logits = self.fc3(x)
         return logits
+
+
+# ============================================================
+# ANN METRIC CALCULATION (FLOPs)
+# ============================================================
+
+def count_ann_flops(model, input_shape):
+    """
+    Calculates total FLOPs for the forward pass.
+    Linear FLOPs ≈ 2 * in_features * out_features (for Multiply-Accumulate)
+    """
+    batch_size = input_shape[0]
+    # Calculate input features after flattening
+    in_dim = np.prod(input_shape[1:])
+    
+    h1 = model.fc1.out_features
+    h2 = model.fc2.out_features
+    out = model.fc3.out_features
+
+    # FC Layers
+    flops_fc1 = 2 * in_dim * h1
+    flops_fc2 = 2 * h1 * h2
+    flops_fc3 = 2 * h2 * out
+    
+    # Overhead: BatchNorm (4 ops/neuron) + ReLU (1 op/neuron)
+    # Total overhead is small, but included for completeness
+    flops_overhead = (h1 + h2) * 5 
+    
+    total_flops = (flops_fc1 + flops_fc2 + flops_fc3 + flops_overhead) * batch_size
+    return total_flops
+
+
+# ============================================================
+# ANN EVALUATION RUNNER
+# ============================================================
+
+def run_ann_with_metrics(model, data, power_watts=20.0, device="cpu"):
+    """
+    Benchmarks the ANN and returns classification results and metrics.
+    """
+    model.to(device).eval()
+    
+    # Ensure data is a Torch tensor
+    if not isinstance(data, torch.Tensor):
+        data = torch.from_numpy(data).float()
+    
+    data = data.to(device)
+    
+    # Warm up (optional, for more stable latency measurements)
+    _ = model(data[:1]) 
+    
+    with torch.no_grad():
+        t_start = time.perf_counter()
+        logits = model(data)
+        t_end = time.perf_counter()
+    
+    latency = t_end - t_start
+    total_flops = count_ann_flops(model, data.shape)
+    energy = latency * power_watts
+    
+    return (
+        logits,       # 1. spkout (logits for ANN)
+        None,         # 2. lats (not applicable)
+        latency,      # 3. latency_ann
+        0,            # 4. epoch_ops (not applicable)
+        total_flops,  # 5. total_ann_ops
+        energy,       # 6. ann_energy
+        total_flops   # 7. total_ann_flops (re-using flops here)
+    )
