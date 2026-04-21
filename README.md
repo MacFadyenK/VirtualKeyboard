@@ -1,5 +1,6 @@
 # VirtualKeyboard
 Virtual Keyboard application using a trained SNN for Senior Design-BE4999
+
 <img width="512" height="74" alt="data_pipeline" src="https://github.com/user-attachments/assets/e88e3cb0-80fa-405a-8086-64beabf794bf" />
 
 ## Abstract
@@ -7,8 +8,8 @@ The designed project is an EEG-driven virtual keyboard intended to aid those who
 
 ## Dataset
 This system is trained using a publicly available EEG dataset [1]. 55 participants performed RSVP and P300 speller tasks, with EEG recorded using 32 electrodes at 512 Hz [1]. Participants completed both calibration runs (training data) and test runs (evaluation data).
-- SNN Training Split: 69300 for testing, 14850 
-- 
+- SNN Training Split: 69300 for testing, 14850 for validation and testing
+- Character selection split: 385 characters for validation, 1155 characters for testing
 
 ## How To Run
 #### Step 1:
@@ -16,16 +17,23 @@ This system is trained using a publicly available EEG dataset [1]. 55 participan
   Download necessary .mat files from [1] and place in sub-directory datasets/Won2022_BIDS/.mat_files/
   
 #### Step 2: Activate Virtual Environment
-Windows:	``` python -m venv .venv
-              .venv\Scripts\activate```
-MacOS: 	```python3 -m venv .venv
-					 source .venv/bins/activate```
+Windows:	
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+MacOS:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
 #### Step 3: Install Dependencies
-      ```pip install -r requirements.txt```
+```pip install -r requirements.txt```
 
 #### Step 4
-      ```python VirtualKeyboard_cmd_ln_cpu.py```
+```python VirtualKeyboard_cmd_ln_cpu.py```
 
 User will be prompted to enter subject number and then character to be simulated with virtual selection. The character selection process can be repeated. Enter 'clear' to remove selection history and 'quit' to exit the program
 
