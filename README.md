@@ -1,5 +1,5 @@
 # VirtualKeyboard
-Virtual Keyboard application using a trained SNN for Senior Design-BE4999
+A Virtual Keyboard is a brain-computer interface (BCI) that enables a user to select characters using brain activity measured through electroencephalography (EEG). The system detects neural responses associated with attention (specifically the P300 event-related potential) and converts these signals into character outputs using a trained spiking neural network (SNN).
 
 <img width="512" height="74" alt="data_pipeline" src="https://github.com/user-attachments/assets/e88e3cb0-80fa-405a-8086-64beabf794bf" />
 
@@ -11,10 +11,48 @@ This system is trained using a publicly available EEG dataset [1]. 55 participan
 - SNN Training Split: 69300 for testing, 14850 for validation and testing
 - Character selection split: 385 characters for validation, 1155 characters for testing
 
+## Preprocessing and Feature Extraction
+Data was split into 600ms epochs after each flash occurs.
+#### Preprocessing
+- channel selection (8 channels in Parietal/Midline region)
+- baseline subtraction
+- linear detrending
+- 0.5-15Hz bandpass filter
+#### Feature Extraction
+- time downsampling to 171Hz
+- time window: 200-400ms from flash
+- Standard scaling per channel
+
+## Spike Encoding
+Transmits continuous data into [-1, 0, 1] spikes upon change between consecutive time steps reaching the specified threshold
+
+## SNN Architecture and Hyperparameters
+Binary classification of P300/non-P300 signals
+- Leaky Integrate and Fire (LIF) neurons: simulate biological neurons by integrating a continually leaking signal and firing spikes.
+- Fully connected layers [8→128→64→2]
+
+|                        |Final Design Selection           |           |
+|------------------------|---------------------------------|-----------|
+| Preprocessing          | Filter Range                    | 0.5-15Hz  |
+| Feature Extraction     | Downsample Factor               | 3         |
+|                        | Time Window                     | 200-400ms |
+| Delta Encoding         | Threshold                       | 0.09      |
+| LIF Neurons            | Decay Constant (beta)           | 0.95      |
+|                        | Threshold                       | 1         |
+| SNN Architecture       | Hidden Layer Sizes              | [128, 64] |
+|                        | Dropout                         | 0.1       |
+| Training               | Surrogate Gradient Constant (k) | 10        |
+|                        | Batch Size                      | 256       |
+|                        | Epochs                          | 100       |
+
+## Character Selection
+- sum log probabilities of positive P300 classification for each row and column
+- intersection of highest probability row and column is the selected character
+
 ## How To Run
-#### Step 1:
+#### Step 1: Download Files
   Download necessary files from GitHub and navigate to directory within computer
-  Download necessary .mat files from [1] and place in sub-directory datasets/Won2022_BIDS/.mat_files/
+  Download necessary .mat files from [1] and place in sub-directory `datasets/Won2022_BIDS/.mat_files/`
   
 #### Step 2: Activate Virtual Environment
 Windows:	
@@ -30,11 +68,36 @@ source .venv/bin/activate
 ```
 
 #### Step 3: Install Dependencies
-```pip install -r requirements.txt```
+```
+pip install -r requirements.txt
+```
 
-#### Step 4
-```python VirtualKeyboard_cmd_ln_cpu.py```
+#### Step 4: Run Simulation File
+```
+python VirtualKeyboard_cmd_ln_cpu.py
+```
 
 User will be prompted to enter subject number and then character to be simulated with virtual selection. The character selection process can be repeated. Enter 'clear' to remove selection history and 'quit' to exit the program
 
+## Performance Evaluation
+### Character Selection accuracy
+|Method            |Accuracy      |Significance  |
+|------------------|--------------|--------------|
+|CPU               |48.31 ± 22.15%|p = 8.85e-20  |
+|FPGA              |TBA           |TBA           |
+|Random Classifier |9.35 ± 8.69%  |N/A           |
 
+### Latency and Energy
+|Pipeline Stage     |CPU Latency(ms)   |CPU Energy (μJ)  |FPGA Latency (ms) |FPGA Energy (μJ)  |
+|-------------------|------------------|-----------------|------------------|------------------|
+|Preprocessing      |95.2              |65.20            |95.2              |65.20             |
+|Feature Extraction |3.4               |4.94             |3.4               |4.94              |
+|Spike Encoding     |0.3               |0.82             |0.3               |0.82              |
+|SNN Classification |67.5              |38.23            |TBA               |TBA               |
+|Character Selection|0.6               |0.02             |0.6               |0.02              |
+|Full Pipeline      |167.0             |109.21           |TBA               |TBA               |
+
+## References
+[1] K. Won, M. Kwon, M. Ahn, and S. C. Jun, “EEG Dataset for RSVP and P300 Speller Brain-Computer Interfaces,” Scientific Data, vol. 9, no. 1, p. 388, Jul. 2022, doi: https://doi.org/10.1038/s41597-022-01509-w. 
+
+*For a full list of all references used during the project, see the report references section
