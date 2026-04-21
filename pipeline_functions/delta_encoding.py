@@ -2,7 +2,11 @@ import numpy as np
 
 def delta_encode(data, threshold=0.009, off_spike=True, padding=False):
     """
-    Input: data shape = (trials, channels, time)
+    Input: 
+        data shape = (trials, channels, time)
+        threshold: minimum change in signal required to generate a spike
+        off_spike: whether to generate negative spikes for decreases in signal
+        padding: whether to pad the beginning of the signal with a copy of the first time step (if False, pads with zeros)
     Output: spikes shape = (trials, time, channels)
     """
     data = np.asarray(data, dtype=np.float32)
