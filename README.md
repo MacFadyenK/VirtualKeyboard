@@ -4,7 +4,7 @@ A Virtual Keyboard is a brain-computer interface (BCI) that enables a user to se
 <img width="512" height="74" alt="data_pipeline" src="https://github.com/user-attachments/assets/e88e3cb0-80fa-405a-8086-64beabf794bf" />
 
 ## Abstract
-The designed project is an EEG-driven virtual keyboard intended to aid those who are neurologically impaired and improve technology in non-verbal communication. The system integrates a brain–computer interface (BCI) in order to interpret electroencephalogram (EEG) signals from a database in order to find the associated character. To implement a low energy, low latency design for a virtual keyboard system, a spiking neural network (SNN) classifier was implemented with field programmable gate array (FPGA) acceleration. Using a pre-recorded EEG P300 speller dataset, we first preprocess and reduce the feature space using waveform conserving techniques. A three layer fully connected SNN [8→128→64→2] was trained to classify for P300 signal presence with a balanced test accuracy of 59.90% and a loss of 0.6629. The process of character selection is based on the calculating and summing of probabilities of P300 signal presence in each row or column, and finding the intersection of the row and column with the highest score. The trained SNN was transferred to a FPGA for further evaluation. Final character selection accuracy was calculated as 48.31 ± 22.15% on CPU and {} on FPGA, which was significantly higher than the random weight classifier baseline (p << 0.05). Latency analysis revealed a total latency of 137ms from preprocessing to character selection on CPU and {} using FPGA accelerated SNN. Energy usage for the virtual keyboard was determined to be 109.21𝜇J through FLOP analysis with a standard conversion. Comparison with a traditional artificial neural network (ANN) with similar accuracy revealed that the SNN is lower energy but higher latency.
+The designed project is an EEG-driven virtual keyboard intended to aid those with impaired motor abilities and improve technology in non-verbal communication. The system integrates a brain–computer interface (BCI) to interpret electroencephalogram (EEG) signals from a database in order to find the associated character. To achieve a low energy, low latency design, a spiking neural network (SNN) classifier was implemented with field programmable gate array (FPGA) acceleration. Using a pre-recorded EEG P300 speller dataset, the signals were preprocessed and reduced in feature space using waveform conserving techniques. A three layer fully connected SNN [8→128→64→2] was trained to classify P300 signal presence, achieving a balanced test accuracy of 59.90% and a loss of 0.6629. Character selection was done by calculating and summing the probabilities of P300 signal presence in each row or column and finding the intersection of the row and column with the highest score. The trained SNN was then implemented onto a FPGA using Xilinx Vivado Suite 2025.2, following the same architecture and trained weights. Final character selection accuracy was calculated as 48.31 ± 22.15% on CPU and 4.76% on FPGA. CPU accuracy was significantly higher than the random weight classifier baseline (p << 0.05). Latency analysis revealed a total latency of 137 ms from preprocessing to character selection on CPU and 113.2 ms using FPGA acceleration. Energy consumption for the virtual keyboard was determined to be 109.21 μJ based on FLOP analysis with a standard conversion. A comparison with a traditional artificial neural network (ANN) with similar accuracy revealed that the SNN is lower energy but higher latency.
 
 ## Dataset
 This system is trained using a publicly available EEG dataset [1]. 55 participants performed RSVP and P300 speller tasks, with EEG recorded using 32 electrodes at 512 Hz [1]. Participants completed both calibration runs (training data) and test runs (evaluation data).
@@ -84,8 +84,10 @@ User will be prompted to enter subject number and then character to be simulated
 |Method            |Accuracy      |Significance  |
 |------------------|--------------|--------------|
 |CPU               |48.31 ± 22.15%|p = 8.85e-20  |
-|FPGA              |TBA           |TBA           |
+|FPGA              |TBA           |4.76%*        |
 |Random Classifier |9.35 ± 8.69%  |N/A           |
+
+*One Subject
 
 ### Latency and Energy
 |Pipeline Stage     |CPU Latency(ms)   |CPU Energy (μJ)  |FPGA Latency (ms) |FPGA Energy (μJ)  |
@@ -93,9 +95,9 @@ User will be prompted to enter subject number and then character to be simulated
 |Preprocessing      |95.2              |65.20            |95.2              |65.20             |
 |Feature Extraction |3.4               |4.94             |3.4               |4.94              |
 |Spike Encoding     |0.3               |0.82             |0.3               |0.82              |
-|SNN Classification |67.5              |38.23            |TBA               |TBA               |
+|SNN Classification |67.5              |38.23            |13.7              |3.75e-5           |
 |Character Selection|0.6               |0.02             |0.6               |0.02              |
-|Full Pipeline      |167.0             |109.21           |TBA               |TBA               |
+|Full Pipeline      |167.0             |109.21           |113.2             |69.98             |
 
 ## References
 [1] K. Won, M. Kwon, M. Ahn, and S. C. Jun, “EEG Dataset for RSVP and P300 Speller Brain-Computer Interfaces,” Scientific Data, vol. 9, no. 1, p. 388, Jul. 2022, doi: https://doi.org/10.1038/s41597-022-01509-w. 
