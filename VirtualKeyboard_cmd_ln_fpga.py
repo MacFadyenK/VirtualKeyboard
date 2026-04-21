@@ -8,11 +8,12 @@ import struct
 
 def send_to_fpga(X_spikes):
     # does the data need to be int8 for FPGA?
-    X_spikes_int8 = X_spikes.astype(np.int8)
-    flattened = X_spikes_int8.flatten()  # Flatten the array to 1D
-    binary_data = struct.pack('<' + 'h' * flattened.size, *flattened)
+    #binary_data = X_spikes.astype(np.int8).tobytes()
+    for sample in X_spikes:
+        data = sample.astype(np.int16).tobytes()
+        ser.write(data)
 
-    ser.write(binary_data)  # Send the binary data to the FPGA
+    #ser.write(binary_data)  # Send the binary data to the FPGA
 
 def receive_from_fpga(num_time_steps, num_output_neurons=2):
     num_bytes = num_time_steps * num_output_neurons * 2  # 2 bytes per int16
