@@ -4,7 +4,9 @@ from pipeline_functions import *
 import torch
 
 if __name__ == "__main__":
+    print("Loading Virtual Keyboard...")
     base_dir = Path(__file__).resolve().parent
+    print(base_dir)
 
     # create SNN model and load weights
     snn = SNNModule.createSNN(8, [128, 64], betas=[0.95, 0.95, 0.95], thresholds=[1, 1, 1])
@@ -22,6 +24,8 @@ if __name__ == "__main__":
 
     not_valid_input = True
     quit = False
+
+    print("Loading Complete")
 
     while not_valid_input:
         # get subject
@@ -50,11 +54,19 @@ if __name__ == "__main__":
         while not_valid_input:
             # get character
             character = input("Enter character to select (A-Z): ").upper()
-
+            
+            # for quitting the program
             if character == exit_code:
                 quit=True
                 print("Exiting program...")
                 break  # Exits the inner while loop
+            
+            # clears the saved character output
+            if character == 'CLEAR':
+                running_correct_chars = ""
+                running_predicted_chars = ""
+                print("Character Output Cleared")
+                continue # back to enter character
 
             # path to .mat file
             file_path = base_dir / f"datasets/Won2022_BIDS/.mat_files/s{subject:02d}.mat"
